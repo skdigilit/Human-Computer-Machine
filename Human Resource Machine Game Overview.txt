@@ -1,0 +1,12 @@
+Human Resource Machine (2015) is a visual programming puzzle game — meaning instead of typing code, you drag and drop instruction blocks to build programs. The conceit (the clever framing idea) is that you play as a lowly office worker whose job is to move boxes between an inbox and an outbox on a conveyor belt. Each level gives you a task from your boss, and you automate it by programming your little worker. Success gets you "promoted" to the next level — another year in the vast office building.
+
+the game UI basically involves an input area where numbers or blocks appear and then you have to code a set of instructions by picking them up from a given slot of instructions and then placing them in an instruction coding area where the sequence is executed in the order that we place the instructions. the goal of the game is to complete a task by achieving the mentioned goal and getting the right output in the out area.
+
+there are play pause buttons which run through the set of instructions and we can even stretch through them like we do in a coding debugger.
+
+some instructions like the jump command allow you to jump from one area of the instruction order to another area.
+
+you can see some of these examples in the images.
+
+
+there is a character that basically carries out the instructions. by picking and placing boxes from the in area into the memory area and then performing instructions on them and then placing them finally into the out area. 
