@@ -82,7 +82,7 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	_body.text = _problem_text
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.add_theme_color_override("font_color", Color.html("#4A4534"))
-	VisualTheme.apply_font_size(_body, 16, 6, 160)
+	VisualTheme.apply_font_size(_body, 22, 8, 160)
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var body_width := Control.new()

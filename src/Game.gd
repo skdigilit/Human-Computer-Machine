@@ -15,7 +15,7 @@ const PANEL_GAP := 8.0
 const ROOM_WIDTH_RATIO := 0.64
 const PALETTE_WIDTH_RATIO := 0.12
 const CONTROL_HEIGHT_RATIO := 0.10
-const BRIEFING_HEIGHT_RATIO := 0.30
+const BRIEFING_HEIGHT_RATIO := 0.25
 const MIN_ROOM_WIDTH := 720.0
 const MIN_PALETTE_WIDTH := 180.0
 const MIN_EDITOR_WIDTH := 330.0
@@ -24,6 +24,11 @@ const MIN_BRIEFING_HEIGHT := 220.0
 const MIN_PROGRAM_HEIGHT := 260.0
 const MAX_PROGRAM_PAGES := 3
 const DEFAULT_SAVE_PATH := "user://instruction_pages.json"
+const RESIZE_EDGE_THICKNESS := 10.0
+const RESIZE_NONE := 0
+const RESIZE_PALETTE_SPLIT := 1
+const RESIZE_EDITOR_SPLIT := 2
+const RESIZE_ROOM_SPLIT := 3
 
 var _level: Level
 var _levels: Array[Level] = []
@@ -43,6 +48,8 @@ var _control_bar: ControlBar
 var _win_banner: Label
 var _room_visual_size: Vector2 = Vector2.ZERO
 var _palette_sidebar_ratio: float = 0.0
+var _editor_question_ratio: float = BRIEFING_HEIGHT_RATIO
+var _resize_kind: int = RESIZE_NONE
 
 var _running: bool = false
 var _busy: bool = false
@@ -76,19 +83,20 @@ func _notification(what: int) -> void:
 		_layout_panels(get_viewport_rect().size)
 
 func _input(event: InputEvent) -> void:
-	if not (event is InputEventKey):
+	if _handle_resize_input(event):
 		return
-	var key := event as InputEventKey
-	if not key.pressed or key.echo:
-		return
-	if _is_scale_up_key(key):
-		if VisualTheme.adjust_user_ui_scale(1):
-			_apply_ui_scale()
-		accept_event()
-	elif _is_scale_down_key(key):
-		if VisualTheme.adjust_user_ui_scale(-1):
-			_apply_ui_scale()
-		accept_event()
+	if event is InputEventKey:
+		var key := event as InputEventKey
+		if not key.pressed or key.echo:
+			return
+		if _is_scale_up_key(key):
+			if VisualTheme.adjust_user_ui_scale(1):
+				_apply_ui_scale()
+			accept_event()
+		elif _is_scale_down_key(key):
+			if VisualTheme.adjust_user_ui_scale(-1):
+				_apply_ui_scale()
+			accept_event()
 
 # --- Construction -------------------------------------------------------------
 
@@ -165,7 +173,7 @@ func _layout_panels(viewport_size: Vector2) -> void:
 	var editor_width: float = widths[2]
 
 	var editor_stack_height := maxf(1.0, top_height - gap)
-	var briefing_height := editor_stack_height * 0.25
+	var briefing_height := editor_stack_height * _clamped_editor_question_ratio(editor_stack_height)
 	var program_height := editor_stack_height - briefing_height
 
 	_room.position = Vector2(gap, gap)
@@ -197,10 +205,29 @@ func _adaptive_column_widths(content_width: float) -> Array[float]:
 	var base_right_width := maxf(1.0, content_width - base_room_width)
 	var right_width := clampf(base_right_width * ui_scale, 1.0, content_width - room_min)
 	var room_width := content_width - right_width
-	var palette_ratio := clampf(_palette_sidebar_ratio, 0.18, 0.42)
+	var ratio_bounds := _palette_sidebar_ratio_bounds(right_width)
+	var palette_ratio := clampf(_palette_sidebar_ratio, ratio_bounds.x, ratio_bounds.y)
 	var palette_width := right_width * palette_ratio
 	var editor_width := right_width - palette_width
 	return [room_width, palette_width, editor_width]
+
+func _palette_sidebar_ratio_bounds(right_width: float) -> Vector2:
+	if right_width <= 1.0:
+		return Vector2(0.12, 0.88)
+	var min_ratio := clampf(_min_palette_width() / right_width, 0.12, 0.65)
+	var max_ratio := clampf(1.0 - _min_editor_width() / right_width, 0.35, 0.88)
+	if min_ratio > max_ratio:
+		return Vector2(0.12, 0.88)
+	return Vector2(min_ratio, max_ratio)
+
+func _clamped_editor_question_ratio(stack_height: float) -> float:
+	if stack_height <= 1.0:
+		return BRIEFING_HEIGHT_RATIO
+	var min_ratio := clampf(_min_briefing_height() / stack_height, 0.12, 0.80)
+	var max_ratio := clampf(1.0 - _min_program_height() / stack_height, 0.20, 0.88)
+	if min_ratio > max_ratio:
+		return clampf(_editor_question_ratio, 0.12, 0.88)
+	return clampf(_editor_question_ratio, min_ratio, max_ratio)
 
 func _panel_gap() -> float:
 	return VisualTheme.scaled(PANEL_GAP, 4.0, 36.0)
@@ -260,6 +287,124 @@ func _matches_key(key: InputEventKey, codes: Array[int]) -> bool:
 		if key.keycode == code or key.physical_keycode == code or key.key_label == code:
 			return true
 	return false
+
+func _handle_resize_input(event: InputEvent) -> bool:
+	if event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		if button.button_index != MOUSE_BUTTON_LEFT:
+			return false
+		if button.pressed:
+			_resize_kind = _resize_edge_at(button.position, _event_resize_modifier_pressed(button))
+			if _resize_kind != RESIZE_NONE:
+				accept_event()
+				return true
+		elif _resize_kind != RESIZE_NONE:
+			_resize_kind = RESIZE_NONE
+			_update_resize_cursor(button.position, _event_resize_modifier_pressed(button))
+			accept_event()
+			return true
+	elif event is InputEventMouseMotion:
+		var motion := event as InputEventMouseMotion
+		if _resize_kind != RESIZE_NONE:
+			_apply_panel_resize(motion.position)
+			accept_event()
+			return true
+		_update_resize_cursor(motion.position, _event_resize_modifier_pressed(motion))
+	return false
+
+func _event_resize_modifier_pressed(event: InputEventWithModifiers) -> bool:
+	return event.ctrl_pressed or event.meta_pressed
+
+func _resize_edge_at(mouse_position: Vector2, modifier_pressed: bool) -> int:
+	if not modifier_pressed:
+		return RESIZE_NONE
+	var edge := _resize_edge_thickness()
+	if _horizontal_edge_hit(_briefing, mouse_position, true, edge) or _horizontal_edge_hit(_program_list, mouse_position, false, edge):
+		return RESIZE_EDITOR_SPLIT
+	if _vertical_edge_hit(_palette, mouse_position, false, edge):
+		return RESIZE_ROOM_SPLIT
+	if _vertical_edge_hit(_palette, mouse_position, true, edge):
+		return RESIZE_PALETTE_SPLIT
+	return RESIZE_NONE
+
+func _update_resize_cursor(mouse_position: Vector2, modifier_pressed: bool) -> void:
+	match _resize_edge_at(mouse_position, modifier_pressed):
+		RESIZE_PALETTE_SPLIT, RESIZE_ROOM_SPLIT:
+			Input.set_default_cursor_shape(Input.CURSOR_HSIZE)
+		RESIZE_EDITOR_SPLIT:
+			Input.set_default_cursor_shape(Input.CURSOR_VSIZE)
+		_:
+			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+
+func _resize_edge_thickness() -> float:
+	return VisualTheme.scaled(RESIZE_EDGE_THICKNESS, 6.0, 32.0)
+
+func _horizontal_edge_hit(control: Control, mouse_position: Vector2, bottom_edge: bool, edge: float) -> bool:
+	if control == null:
+		return false
+	var rect := control.get_global_rect()
+	var y := rect.end.y if bottom_edge else rect.position.y
+	return (
+		absf(mouse_position.y - y) <= edge
+		and mouse_position.x >= rect.position.x - edge
+		and mouse_position.x <= rect.end.x + edge
+	)
+
+func _vertical_edge_hit(control: Control, mouse_position: Vector2, right_edge: bool, edge: float) -> bool:
+	if control == null:
+		return false
+	var rect := control.get_global_rect()
+	var x := rect.end.x if right_edge else rect.position.x
+	return (
+		absf(mouse_position.x - x) <= edge
+		and mouse_position.y >= rect.position.y - edge
+		and mouse_position.y <= rect.end.y + edge
+	)
+
+func _apply_panel_resize(mouse_position: Vector2) -> void:
+	match _resize_kind:
+		RESIZE_PALETTE_SPLIT:
+			_resize_palette_split(mouse_position)
+		RESIZE_EDITOR_SPLIT:
+			_resize_editor_split(mouse_position)
+		RESIZE_ROOM_SPLIT:
+			_resize_room_split(mouse_position)
+	_layout_panels(get_viewport_rect().size)
+
+func _resize_palette_split(mouse_position: Vector2) -> void:
+	var right_width := _palette.size.x + _program_list.size.x
+	if right_width <= 1.0:
+		return
+	var palette_width := mouse_position.x - _palette.position.x
+	var ratio_bounds := _palette_sidebar_ratio_bounds(right_width)
+	_palette_sidebar_ratio = clampf(palette_width / right_width, ratio_bounds.x, ratio_bounds.y)
+
+func _resize_room_split(mouse_position: Vector2) -> void:
+	var viewport_size := get_viewport_rect().size
+	var gap := _panel_gap()
+	var content_width := maxf(1.0, viewport_size.x - gap * 4.0)
+	var right_min_width := _min_palette_width() + _min_editor_width()
+	var room_min_width := minf(_min_room_width(), maxf(320.0, content_width * 0.24))
+	var room_max_width := maxf(room_min_width, content_width - right_min_width)
+	var desired_room_width := clampf(mouse_position.x - gap * 2.0, room_min_width, room_max_width)
+	var ui_scale := VisualTheme.effective_ui_scale()
+	var desired_right_width := maxf(1.0, content_width - desired_room_width)
+	var base_room_width := content_width - desired_right_width / ui_scale
+	_room_visual_size.x = clampf(base_room_width, room_min_width, room_max_width)
+
+func _resize_editor_split(mouse_position: Vector2) -> void:
+	var stack_top := _briefing.position.y
+	var stack_height := _briefing.size.y + _program_list.size.y
+	if stack_height <= 1.0:
+		return
+	_editor_question_ratio = _clamped_ratio_for_height(mouse_position.y - stack_top, stack_height)
+
+func _clamped_ratio_for_height(height: float, stack_height: float) -> float:
+	var min_ratio := clampf(_min_briefing_height() / stack_height, 0.12, 0.80)
+	var max_ratio := clampf(1.0 - _min_program_height() / stack_height, 0.20, 0.88)
+	if min_ratio > max_ratio:
+		return clampf(height / stack_height, 0.12, 0.88)
+	return clampf(height / stack_height, min_ratio, max_ratio)
 
 func _wire_signals() -> void:
 	_control_bar.reset_requested.connect(_on_reset)
