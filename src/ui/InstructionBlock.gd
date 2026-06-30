@@ -42,27 +42,30 @@ func _init(p_op: InstructionDef.Op, p_is_palette: bool, p_instruction: Instructi
 
 func _ready() -> void:
 	_apply_style()
+	custom_minimum_size = VisualTheme.scaled_size(Vector2(150, 0), Vector2(80, 0), Vector2(900, 0))
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# Native hover tooltip explaining the command. The Viewport walks up from the
 	# hovered child (label / chip) to this block for the text, so one assignment
 	# covers the whole block.
 	tooltip_text = InstructionDef.tooltip_for(op)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_theme_constant_override("separation", VisualTheme.scaled_int(6, 2, 28))
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side in ["left", "right"]:
-		margin.add_theme_constant_override("margin_" + side, 10)
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(10, 4, 48))
 	for side in ["top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 6)
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(6, 2, 32))
 	margin.add_child(row)
 	add_child(margin)
 
 	_label = Label.new()
 	_label.text = InstructionDef.label_for(op)
 	_label.add_theme_color_override("font_color", Color.html("#FBF7EE"))
-	_label.add_theme_font_size_override("font_size", 17)
-	_label.mouse_filter = Control.MOUSE_FILTER_PASS
+	VisualTheme.apply_font_size(_label, 17, 6, 160)
+	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(_label)
 
 	if not is_palette:
@@ -85,14 +88,13 @@ func _build_operand(row: HBoxContainer) -> void:
 func _make_chip(text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", 18)
 	var style := VisualTheme.make_box_style("#F3ECD8", "#B9AE8C")
 	style.shadow_size = 0
 	b.add_theme_stylebox_override("normal", style)
 	b.add_theme_stylebox_override("hover", style)
 	b.add_theme_stylebox_override("pressed", style)
 	VisualTheme.set_button_font_color(b, Color.html("#3A3526"))
-	b.custom_minimum_size = Vector2(34, 28)
+	VisualTheme.apply_button_size(b, Vector2(34, 28), 18, 20.0)
 	return b
 
 ## Cycle the memory tile this instruction refers to.
@@ -112,6 +114,7 @@ func set_memory_size(count: int) -> void:
 func set_target_label(text: String) -> void:
 	if _target_button:
 		_target_button.text = text
+		_target_button.apply_ui_scale()
 
 ## True when this block carries a jump-target chip.
 func has_target_chip() -> bool:
@@ -131,19 +134,19 @@ func set_candidate(candidate: bool) -> void:
 func _apply_style() -> void:
 	var base := InstructionDef.color_for(op)
 	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(2)
+	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
 	if _candidate:
 		style.bg_color = base.lightened(0.2)
 		style.border_color = Color.html("#3FA0FF")
-		style.set_border_width_all(4)
+		style.set_border_width_all(VisualTheme.scaled_int(4, 1, 24))
 	elif _active:
 		style.bg_color = base.lightened(0.25)
 		style.border_color = Color.html("#FFE680")
-		style.set_border_width_all(4)
+		style.set_border_width_all(VisualTheme.scaled_int(4, 1, 24))
 	else:
 		style.bg_color = base
 		style.border_color = base.darkened(0.25)
-		style.set_border_width_all(3)
+		style.set_border_width_all(VisualTheme.scaled_int(3, 1, 18))
 	add_theme_stylebox_override("panel", style)
 
 # --- Drag and drop ------------------------------------------------------------
@@ -195,12 +198,12 @@ func _make_preview() -> Control:
 	var lbl := Label.new()
 	lbl.text = InstructionDef.label_for(op)
 	lbl.add_theme_color_override("font_color", Color.html("#FBF7EE"))
-	lbl.add_theme_font_size_override("font_size", 20)
+	VisualTheme.apply_font_size(lbl, 20, 6, 176)
 	var m := MarginContainer.new()
-	m.add_theme_constant_override("margin_left", 10)
-	m.add_theme_constant_override("margin_right", 10)
-	m.add_theme_constant_override("margin_top", 6)
-	m.add_theme_constant_override("margin_bottom", 6)
+	m.add_theme_constant_override("margin_left", VisualTheme.scaled_int(10, 4, 48))
+	m.add_theme_constant_override("margin_right", VisualTheme.scaled_int(10, 4, 48))
+	m.add_theme_constant_override("margin_top", VisualTheme.scaled_int(6, 2, 32))
+	m.add_theme_constant_override("margin_bottom", VisualTheme.scaled_int(6, 2, 32))
 	m.add_child(lbl)
 	preview.add_child(m)
 	return preview

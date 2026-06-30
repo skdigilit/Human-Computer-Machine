@@ -29,6 +29,7 @@ var _list: VBoxContainer
 var _blocks: Array[InstructionBlock] = []
 var _active_index: int = -1
 var _jump_underlay: Control
+var _page_header: HBoxContainer
 var _target_boxes: Dictionary = {} ## Jump instruction id -> dummy target box.
 var _page_buttons: Array[Button] = []
 var _add_page_button: Button
@@ -48,13 +49,8 @@ func _init() -> void:
 	clip_contents = true
 
 func _ready() -> void:
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color.html("#E7DFC5")
-	bg.border_color = Color.html(VisualTheme.INK)
-	bg.set_border_width_all(4)
-	bg.set_corner_radius_all(VisualTheme.UI_PANEL_RADIUS)
 	var panel := Panel.new()
-	panel.add_theme_stylebox_override("panel", bg)
+	panel.add_theme_stylebox_override("panel", _make_panel_style())
 	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(panel)
@@ -69,16 +65,13 @@ func _ready() -> void:
 
 	_scroll = ScrollContainer.new()
 	_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_scroll.offset_right = -8
-	_scroll.offset_left = 8
-	_scroll.offset_top = HEADER_HEIGHT
-	_scroll.offset_bottom = -8
+	_apply_scroll_offsets()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_scroll)
 
 	_list = VBoxContainer.new()
-	_list.add_theme_constant_override("separation", 5)
+	_list.add_theme_constant_override("separation", VisualTheme.scaled_int(5, 2, 28))
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.mouse_filter = Control.MOUSE_FILTER_PASS
 	_scroll.add_child(_list)
@@ -88,36 +81,32 @@ func _ready() -> void:
 	set_process(true)
 
 func _build_page_header() -> void:
-	var header := HBoxContainer.new()
-	header.position = Vector2(10, 8)
-	header.size = Vector2(size.x - 20, 34)
-	header.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	header.offset_left = 10
-	header.offset_right = -10
-	header.offset_top = 8
-	header.offset_bottom = 42
-	header.add_theme_constant_override("separation", 6)
-	add_child(header)
+	_page_header = HBoxContainer.new()
+	_page_header.position = Vector2(10, 8)
+	_page_header.size = Vector2(size.x - 20, 34)
+	_page_header.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_apply_header_offsets()
+	_page_header.add_theme_constant_override("separation", VisualTheme.scaled_int(6, 2, 28))
+	add_child(_page_header)
 
 	for i in MAX_PAGES:
 		var page_button := Button.new()
 		page_button.text = str(i + 1)
-		page_button.custom_minimum_size = Vector2(42, 34)
+		VisualTheme.apply_button_size(page_button, Vector2(42, 34), 18, 24.0)
 		page_button.pressed.connect(_on_page_button_pressed.bind(i))
-		header.add_child(page_button)
+		_page_header.add_child(page_button)
 		_page_buttons.append(page_button)
 
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(spacer)
+	_page_header.add_child(spacer)
 
 	_add_page_button = Button.new()
 	_add_page_button.text = "+"
 	_add_page_button.tooltip_text = "Add instruction page"
-	_add_page_button.custom_minimum_size = Vector2(42, 34)
-	_add_page_button.add_theme_font_size_override("font_size", 24)
+	VisualTheme.apply_button_size(_add_page_button, Vector2(42, 34), 24, 20.0)
 	_add_page_button.pressed.connect(func() -> void: add_page_requested.emit())
-	header.add_child(_add_page_button)
+	_page_header.add_child(_add_page_button)
 	_refresh_page_header()
 
 func _on_page_button_pressed(index: int) -> void:
@@ -146,6 +135,8 @@ func _apply_page_button_style(button: Button, is_active: bool) -> void:
 	button.add_theme_stylebox_override("hover", style if is_active else VisualTheme.make_box_style("#CDC3A5", border, 4))
 	button.add_theme_stylebox_override("pressed", style)
 	VisualTheme.set_button_font_color(button, text)
+	var base_font_size := 24 if button == _add_page_button else 18
+	VisualTheme.apply_button_size(button, Vector2(42, 34), base_font_size, 24.0)
 
 ## The dashed empty slot shown at the drop position.
 func _make_placeholder() -> PanelContainer:
@@ -153,17 +144,79 @@ func _make_placeholder() -> PanelContainer:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1, 1, 1, 0.18)
 	style.border_color = Color.html("#8C7E5C")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(7)
+	style.set_border_width_all(VisualTheme.scaled_int(2, 1, 14))
+	style.set_corner_radius_all(VisualTheme.scaled_int(7, 2, 36))
 	slot.add_theme_stylebox_override("panel", style)
-	slot.custom_minimum_size = Vector2(0, 42)
+	slot.custom_minimum_size = VisualTheme.scaled_size(Vector2(0, 42), Vector2(0, 18), Vector2(0, 344))
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var hint := Label.new()
 	hint.text = "DROP MOVE HERE"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_color_override("font_color", Color(0.3, 0.27, 0.18, 0.7))
+	VisualTheme.apply_font_size(hint, 16, 6, 136)
 	slot.add_child(hint)
 	return slot
+
+func apply_ui_scale() -> void:
+	for child in get_children():
+		if child is Panel:
+			child.add_theme_stylebox_override("panel", _make_panel_style())
+			break
+	_apply_scroll_offsets()
+	if _list:
+		_list.add_theme_constant_override("separation", VisualTheme.scaled_int(5, 2, 28))
+	if _page_header:
+		_apply_header_offsets()
+		_page_header.add_theme_constant_override("separation", VisualTheme.scaled_int(6, 2, 28))
+	for button in _page_buttons:
+		VisualTheme.apply_button_size(button, Vector2(42, 34), 18, 24.0)
+	if _add_page_button:
+		VisualTheme.apply_button_size(_add_page_button, Vector2(42, 34), 24, 20.0)
+	_refresh_page_header()
+	if _placeholder:
+		_detach_placeholder()
+		_placeholder.queue_free()
+	_placeholder = _make_placeholder()
+	var active_index := _active_index
+	rebuild()
+	set_active_line(active_index)
+
+func _make_panel_style() -> StyleBoxFlat:
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color.html("#E7DFC5")
+	bg.border_color = Color.html(VisualTheme.INK)
+	bg.set_border_width_all(VisualTheme.scaled_int(4, 1, 24))
+	bg.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
+	return bg
+
+func _apply_scroll_offsets() -> void:
+	if _scroll == null:
+		return
+	var inset := VisualTheme.scaled(8.0, 3.0, 36.0)
+	_scroll.offset_right = -inset
+	_scroll.offset_left = inset
+	_scroll.offset_top = _header_height()
+	_scroll.offset_bottom = -inset
+
+func _apply_header_offsets() -> void:
+	if _page_header == null:
+		return
+	_page_header.offset_left = VisualTheme.scaled(10.0, 4.0, 44.0)
+	_page_header.offset_right = -VisualTheme.scaled(10.0, 4.0, 44.0)
+	_page_header.offset_top = VisualTheme.scaled(8.0, 3.0, 36.0)
+	_page_header.offset_bottom = _header_height() - VisualTheme.scaled(8.0, 3.0, 36.0)
+
+func _line_number_width() -> float:
+	return VisualTheme.scaled(LINE_NUMBER_WIDTH, 15.0, 288.0)
+
+func _header_height() -> float:
+	return VisualTheme.scaled(HEADER_HEIGHT, 22.0, 376.0)
+
+func _target_box_size() -> Vector2:
+	return VisualTheme.scaled_size(TARGET_BOX_SIZE, Vector2(40, 16), Vector2(680, 280))
+
+func _connector_lane_gap() -> float:
+	return VisualTheme.scaled(CONNECTOR_LANE_GAP, 3.0, 36.0)
 
 ## Bind the program model and (re)draw all rows.
 func setup(p_program: Program, p_memory_size: int, p_active_page: int = 0, p_page_count: int = 1) -> void:
@@ -212,24 +265,24 @@ func _make_target_box(owner_block: InstructionBlock) -> JumpTargetBox:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color.html(InstructionDef.COLOR_JUMP)
 	style.border_color = Color.html(InstructionDef.COLOR_JUMP).darkened(0.25)
-	style.set_border_width_all(3)
-	style.set_corner_radius_all(2)
+	style.set_border_width_all(VisualTheme.scaled_int(3, 1, 18))
+	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
 	box.add_theme_stylebox_override("normal", style)
 	box.add_theme_stylebox_override("hover", VisualTheme.make_box_style("#96A0D6", InstructionDef.COLOR_JUMP, 2))
 	box.add_theme_stylebox_override("pressed", style)
-	box.custom_minimum_size = TARGET_BOX_SIZE
+	box.custom_minimum_size = _target_box_size()
 	return box
 
 ## Dummy targets occupy their own unnumbered row immediately before the
 ## instruction they point at, matching the original game's jump labels.
 func _make_target_row(box: JumpTargetBox) -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 36))
 	row.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.set_meta("jump_target_marker", true)
 
 	var number_spacer := Control.new()
-	number_spacer.custom_minimum_size = Vector2(LINE_NUMBER_WIDTH, 0)
+	number_spacer.custom_minimum_size = Vector2(_line_number_width(), 0)
 	number_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(number_spacer)
 	row.add_child(box)
@@ -238,18 +291,19 @@ func _make_target_row(box: JumpTargetBox) -> Control:
 ## Build a single "NN  [block]" row.
 func _make_row(index: int, inst: Instruction) -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 36))
 	row.mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var number := Label.new()
 	number.text = "%02d" % (index + 1)
-	number.custom_minimum_size = Vector2(LINE_NUMBER_WIDTH, 0)
+	number.custom_minimum_size = Vector2(_line_number_width(), 0)
 	number.add_theme_color_override("font_color", Color.html("#6B5E40"))
-	number.add_theme_font_size_override("font_size", 18)
+	VisualTheme.apply_font_size(number, 18, 6, 160)
 	number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(number)
 
 	var block := InstructionBlock.new(inst.op, false, inst)
+	block.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	block.set_memory_size(memory_size)
 	block.request_target_pick.connect(_on_cycle_target)
 	block.instruction_changed.connect(func() -> void: program_changed.emit())
@@ -512,7 +566,10 @@ func _draw_jump_underlay() -> void:
 		var start := Vector2(source_rect.position.x + source_rect.size.x, source_rect.get_center().y)
 		var target_rect := _local_control_rect(target_box)
 		var end := Vector2(target_rect.end.x, target_rect.get_center().y)
-		var lane_x := minf(size.x - 14.0, maxf(start.x, end.x) + 38.0 + block_index * CONNECTOR_LANE_GAP)
+		var lane_x := minf(
+			size.x - VisualTheme.scaled(14.0, 5.0, 56.0),
+			maxf(start.x, end.x) + VisualTheme.scaled(38.0, 14.0, 152.0) + block_index * _connector_lane_gap()
+		)
 		var points := PackedVector2Array([
 			start,
 			Vector2(lane_x, start.y),

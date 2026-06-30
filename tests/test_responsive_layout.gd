@@ -1,6 +1,6 @@
 extends SceneTree
 
-## Verifies window resizing is absorbed by the surrounding UI, not the room.
+## Verifies adaptive layout keeps panels inside the viewport without overlap.
 
 func _init() -> void:
 	_run.call_deferred()
@@ -15,7 +15,6 @@ func _run() -> void:
 	var initial_room_size := game._room.size
 	var initial_palette_width := game._palette.size.x
 	var initial_briefing_width := game._briefing.size.x
-	var initial_sidebar_ratio := initial_palette_width / (initial_palette_width + initial_briefing_width)
 	var initial_control_height := game._control_bar.size.y
 	var initial_worker_position := game._room.worker.position
 	var initial_viewport := Vector2(
@@ -29,10 +28,7 @@ func _run() -> void:
 	for i in 2:
 		await process_frame
 
-	var room_fixed := game._room.size == initial_room_size
-	var resized_sidebar_ratio := game._palette.size.x / (game._palette.size.x + game._briefing.size.x)
 	var palette_resized := not is_equal_approx(game._palette.size.x, initial_palette_width)
-	var palette_ratio_kept := is_equal_approx(resized_sidebar_ratio, initial_sidebar_ratio)
 	var briefing_resized := not is_equal_approx(game._briefing.size.x, initial_briefing_width)
 	var controls_resized := not is_equal_approx(game._control_bar.size.y, initial_control_height)
 	var controls_reach_grown_bottom := is_equal_approx(
@@ -40,46 +36,79 @@ func _run() -> void:
 		grown_viewport.y - Game.PANEL_GAP
 	)
 	var worker_position_kept := game._room.worker.position == initial_worker_position
+	var grown_no_overlap := _regions_do_not_overlap(game)
+	var grown_inside_viewport := _regions_inside_viewport(game, grown_viewport)
 
 	var shrunk_viewport := initial_viewport - Vector2(0, 280)
 	game._layout_panels(shrunk_viewport)
 	for i in 2:
 		await process_frame
 
-	var room_width_fixed_after_shrink := is_equal_approx(game._room.size.x, initial_room_size.x)
 	var room_height_can_shrink := game._room.size.y < initial_room_size.y
 	var controls_reach_shrunk_bottom := is_equal_approx(
 		game._control_bar.position.y + game._control_bar.size.y,
 		shrunk_viewport.y - Game.PANEL_GAP
 	)
 	var worker_position_kept_after_shrink := game._room.worker.position == initial_worker_position
+	var shrunk_no_overlap := _regions_do_not_overlap(game)
+	var shrunk_inside_viewport := _regions_inside_viewport(game, shrunk_viewport)
 	var passed := (
-		room_fixed
-		and room_has_outer_padding
+		room_has_outer_padding
 		and palette_resized
-		and palette_ratio_kept
 		and briefing_resized
 		and controls_resized
 		and controls_reach_grown_bottom
+		and grown_no_overlap
+		and grown_inside_viewport
 		and worker_position_kept
-		and room_width_fixed_after_shrink
 		and room_height_can_shrink
 		and controls_reach_shrunk_bottom
+		and shrunk_no_overlap
+		and shrunk_inside_viewport
 		and worker_position_kept_after_shrink
 	)
 	if not passed:
-		print("room_fixed=", room_fixed)
 		print("room_has_outer_padding=", room_has_outer_padding)
 		print("palette_resized=", palette_resized)
-		print("palette_ratio_kept=", palette_ratio_kept, " initial=", initial_sidebar_ratio, " resized=", resized_sidebar_ratio)
 		print("briefing_resized=", briefing_resized)
 		print("controls_resized=", controls_resized)
 		print("controls_reach_grown_bottom=", controls_reach_grown_bottom)
+		print("grown_no_overlap=", grown_no_overlap)
+		print("grown_inside_viewport=", grown_inside_viewport)
 		print("worker_position_kept=", worker_position_kept)
-		print("room_width_fixed_after_shrink=", room_width_fixed_after_shrink)
 		print("room_height_can_shrink=", room_height_can_shrink)
 		print("controls_reach_shrunk_bottom=", controls_reach_shrunk_bottom)
+		print("shrunk_no_overlap=", shrunk_no_overlap)
+		print("shrunk_inside_viewport=", shrunk_inside_viewport)
 		print("worker_position_kept_after_shrink=", worker_position_kept_after_shrink)
 
 	print("RESULT: ", "PASS" if passed else "FAIL")
 	quit()
+
+func _regions_do_not_overlap(game: Game) -> bool:
+	var regions := [
+		game._room.get_global_rect(),
+		game._palette.get_global_rect(),
+		game._briefing.get_global_rect(),
+		game._program_list.get_global_rect(),
+		game._control_bar.get_global_rect(),
+	]
+	for i in regions.size():
+		for j in range(i + 1, regions.size()):
+			if regions[i].intersects(regions[j]):
+				return false
+	return true
+
+func _regions_inside_viewport(game: Game, viewport_size: Vector2) -> bool:
+	for rect in [
+		game._room.get_global_rect(),
+		game._palette.get_global_rect(),
+		game._briefing.get_global_rect(),
+		game._program_list.get_global_rect(),
+		game._control_bar.get_global_rect(),
+	]:
+		if rect.position.x < -0.01 or rect.position.y < -0.01:
+			return false
+		if rect.end.x > viewport_size.x + 0.01 or rect.end.y > viewport_size.y + 0.01:
+			return false
+	return true

@@ -1,5 +1,5 @@
 class_name BriefingNote
-extends PanelContainer
+extends Panel
 
 ## The "sticky note" above the program that states the level's title and the
 ## boss's instructions, echoing the briefing card in the original game.
@@ -13,11 +13,18 @@ var _problem_text: String = ""
 var _hint_text: String = ""
 
 func _init() -> void:
+	clip_contents = true
+	_apply_panel_style()
+
+func _get_minimum_size() -> Vector2:
+	return Vector2.ZERO
+
+func _apply_panel_style() -> void:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color.html(VisualTheme.PAPER)
 	style.border_color = Color.html(VisualTheme.INK)
-	style.set_border_width_all(4)
-	style.set_corner_radius_all(VisualTheme.UI_PANEL_RADIUS)
+	style.set_border_width_all(VisualTheme.scaled_int(4, 1, 24))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
 	add_theme_stylebox_override("panel", style)
 
 ## Fill the note from a level definition and show progression controls.
@@ -26,17 +33,18 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 		child.queue_free()
 
 	var margin := MarginContainer.new()
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 14)
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(14, 5, 60))
 	add_child(margin)
 
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 8)
+	column.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 40))
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	margin.add_child(column)
 
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
+	header.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 36))
 	column.add_child(header)
 
 	var previous := _make_nav_button("<")
@@ -47,6 +55,7 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	var counter := Label.new()
 	counter.text = "%d / %d" % [index + 1, total]
 	counter.add_theme_color_override("font_color", Color.html("#6B5E40"))
+	VisualTheme.apply_font_size(counter, 18)
 	counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	counter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	counter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -60,7 +69,7 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	var title := Label.new()
 	title.text = level.title
 	title.add_theme_color_override("font_color", Color.html("#3A3526"))
-	title.add_theme_font_size_override("font_size", 26)
+	VisualTheme.apply_font_size(title, 26, 8, 208)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(title)
@@ -73,7 +82,7 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	_body.text = _problem_text
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.add_theme_color_override("font_color", Color.html("#4A4534"))
-	_body.add_theme_font_size_override("font_size", 16)
+	VisualTheme.apply_font_size(_body, 16, 6, 160)
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var body_width := Control.new()
@@ -99,17 +108,18 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 func _on_hint_toggled(show_hint: bool) -> void:
 	_body.text = _problem_text + ("\n\n" + _hint_text if show_hint else "")
 	_hint_button.text = "HIDE HINT" if show_hint else "SHOW HINT"
+	_hint_button.custom_minimum_size = VisualTheme.button_min_size(_hint_button.text, Vector2(0, 42), 18, 34.0)
 
 func _make_hint_button() -> Button:
 	var button := _make_nav_button("SHOW HINT")
 	button.toggle_mode = true
-	button.custom_minimum_size = Vector2(0, 42)
+	button.custom_minimum_size = VisualTheme.button_min_size(button.text, Vector2(0, 42), 18, 34.0)
 	return button
 
 func _make_nav_button(text: String) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(42, 42)
+	button.custom_minimum_size = VisualTheme.button_min_size(text, Vector2(42, 42), 18, 28.0)
 	var normal := VisualTheme.make_box_style(VisualTheme.PAPER, VisualTheme.INK, 0)
 	var hover := VisualTheme.make_box_style(VisualTheme.SUN, VisualTheme.INK, 0)
 	button.add_theme_stylebox_override("normal", normal)
@@ -117,4 +127,5 @@ func _make_nav_button(text: String) -> Button:
 	button.add_theme_stylebox_override("pressed", hover)
 	button.add_theme_stylebox_override("disabled", normal)
 	VisualTheme.set_button_font_color(button, Color.html(VisualTheme.INK))
+	VisualTheme.apply_font_size(button, 18)
 	return button

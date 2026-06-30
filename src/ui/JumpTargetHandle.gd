@@ -12,15 +12,17 @@ var owner_block: InstructionBlock
 func _init(p_owner: InstructionBlock) -> void:
 	owner_block = p_owner
 	text = "→ ?"
-	add_theme_font_size_override("font_size", 18)
 	var style := VisualTheme.make_box_style("#F3ECD8", "#B9AE8C")
 	style.shadow_size = 0
 	add_theme_stylebox_override("normal", style)
 	add_theme_stylebox_override("hover", VisualTheme.make_box_style("#FFF3CF", "#B9AE8C"))
 	add_theme_stylebox_override("pressed", style)
 	VisualTheme.set_button_font_color(self, Color.html("#3A3526"))
-	custom_minimum_size = Vector2(52, 28)
+	apply_ui_scale()
 	tooltip_text = "Jump target\nClick to cycle, or drag this arrow onto a line."
+
+func apply_ui_scale() -> void:
+	VisualTheme.apply_button_size(self, Vector2(52, 28), 18, 24.0)
 
 func _get_drag_data(_pos: Vector2) -> Variant:
 	var list := _find_program_list()
@@ -37,7 +39,7 @@ func _get_drag_data(_pos: Vector2) -> Variant:
 func _make_preview() -> Control:
 	var lbl := Label.new()
 	lbl.text = "→ target"
-	lbl.add_theme_font_size_override("font_size", 20)
+	VisualTheme.apply_font_size(lbl, 20, 8, 88)
 	lbl.add_theme_color_override("font_color", Color.html("#3A3A6A"))
 	return lbl
 

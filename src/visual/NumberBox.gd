@@ -30,10 +30,14 @@ func _ready() -> void:
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.add_theme_color_override("font_color", Color.html(VisualTheme.BOX_TEXT))
-	_label.add_theme_font_size_override("font_size", 32)
+	VisualTheme.apply_font_size(_label, 32, 8, 184)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
 	_refresh()
+
+func apply_ui_scale() -> void:
+	if is_instance_valid(_label):
+		VisualTheme.apply_font_size(_label, 32, 8, 184)
 
 ## Change the displayed value (e.g. after add/sub/bump).
 func set_value(p_value: int) -> void:

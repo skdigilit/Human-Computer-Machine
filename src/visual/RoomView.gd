@@ -14,6 +14,10 @@ const CHUTE_TOP_ROW := 3
 const WORKER_HOME_CELL := Vector2(6.5, 5.5)
 const MANUAL_STEP_SPEED_SCALE := 4.0
 
+var _content_root: Control
+var _virtual_size: Vector2 = Vector2(1152, 900)
+var _content_scale: float = 1.0
+var _content_offset: Vector2 = Vector2.ZERO
 var _stage: Control          ## Holds all moving pieces above the floor art.
 var worker: Worker
 
@@ -33,10 +37,16 @@ func _init() -> void:
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_update_content_transform()
+		queue_redraw()
+
 func _draw() -> void:
 	var ink := Color.html(VisualTheme.ROOM_FLOOR_DARK)
 	var paper := Color.html(VisualTheme.PAPER)
 	draw_rect(Rect2(Vector2.ZERO, size), ink)
+	draw_set_transform(_content_offset, 0.0, Vector2(_content_scale, _content_scale))
 
 	# Warehouse decoration is assembled only from full grid cells.
 	var tile_colors := [
@@ -53,16 +63,23 @@ func _draw() -> void:
 		draw_rect(inner, ink, false, 3.0)
 
 	# A final row of alternating cells grounds the play area.
-	var floor_row := floori(size.y / CELL) - 1
-	for column in floori(size.x / CELL):
+	var floor_row := floori(_virtual_size.y / CELL) - 1
+	for column in floori(_virtual_size.x / CELL):
 		var floor_cell := Rect2(Vector2(column * CELL, floor_row * CELL), Vector2(CELL, CELL))
 		if column % 2 == 0:
 			draw_rect(floor_cell, paper, true)
 		draw_rect(floor_cell, paper, false, 3.0)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func set_virtual_size(p_size: Vector2) -> void:
+	_virtual_size = Vector2(maxf(p_size.x, CELL * 12.0), maxf(p_size.y, CELL * 9.0))
+	_update_content_transform()
+	queue_redraw()
 
 ## Build the whole room for a level. Safe to call again to restart.
 func setup(level: Level) -> void:
 	_clear_children()
+	_ensure_content_root()
 	_compute_layout(level)
 	_build_floor()
 	_build_chute(_inbox_x, "PICK")
@@ -70,9 +87,9 @@ func setup(level: Level) -> void:
 	_build_tiles(level)
 
 	_stage = Control.new()
-	_stage.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_stage.size = _virtual_size
 	_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_stage)
+	_content_root.add_child(_stage)
 
 	worker = Worker.new()
 	_stage.add_child(worker)
@@ -88,7 +105,7 @@ func restart(level: Level) -> void:
 # --- Layout -------------------------------------------------------------------
 
 func _compute_layout(level: Level) -> void:
-	var columns := floori(size.x / CELL)
+	var columns := maxi(12, floori(_virtual_size.x / CELL))
 	_inbox_x = CELL * 1.5
 	_outbox_x = CELL * (columns - 1.5)
 	_chute_top = CELL * CHUTE_TOP_ROW
@@ -98,7 +115,7 @@ func _compute_layout(level: Level) -> void:
 	var count := level.memory_size
 	var start_column := floori((columns - count) * 0.5)
 	# Keep memory central on taller windows, with one clear row below for the worker.
-	var memory_row := maxi(3, floori(size.y / CELL * 0.5) - 1)
+	var memory_row := maxi(3, floori(_virtual_size.y / CELL * 0.5) - 1)
 	var row_y := (memory_row + 0.5) * CELL
 	for i in count:
 		_tile_centers.append(Vector2((start_column + i + 0.5) * CELL, row_y))
@@ -119,7 +136,7 @@ func _build_chute(center_x: float, label_text: String) -> void:
 	frame.size = Vector2(CELL, CELL * 7)
 	frame.position = Vector2(center_x - CELL * 0.5, _chute_top)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(frame)
+	_content_root.add_child(frame)
 
 	for row in range(1, 7):
 		var divider := ColorRect.new()
@@ -132,14 +149,15 @@ func _build_chute(center_x: float, label_text: String) -> void:
 	var sign := Label.new()
 	sign.text = label_text
 	sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sign.add_theme_font_size_override("font_size", 23)
+	sign.set_meta("base_font_size", 23)
+	VisualTheme.apply_font_size(sign, 23, 6, 160)
 	sign.add_theme_color_override("font_color", Color.html(VisualTheme.INK))
 	sign.add_theme_color_override("font_outline_color", Color.html(VisualTheme.PAPER))
-	sign.add_theme_constant_override("outline_size", 8)
+	sign.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 24))
 	sign.size = Vector2(CELL * 2, CELL)
 	sign.position = Vector2(center_x - sign.size.x * 0.5, _chute_top - CELL)
 	sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(sign)
+	_content_root.add_child(sign)
 
 ## Empty memory cells with their index in the corner.
 func _build_tiles(level: Level) -> void:
@@ -154,15 +172,16 @@ func _build_tiles(level: Level) -> void:
 		tile.size = VisualTheme.TILE_SIZE
 		tile.position = _tile_centers[i] - VisualTheme.TILE_SIZE * 0.5
 		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(tile)
+		_content_root.add_child(tile)
 
 		var idx := Label.new()
 		idx.text = str(i)
 		idx.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
-		idx.add_theme_font_size_override("font_size", 18)
+		idx.set_meta("base_font_size", 18)
+		VisualTheme.apply_font_size(idx, 18, 6, 120)
 		idx.position = _tile_centers[i] + Vector2(CELL * 0.5 - 18, CELL * 0.5 - 26)
 		idx.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(idx)
+		_content_root.add_child(idx)
 
 		_tile_boxes.append(null)
 
@@ -192,7 +211,7 @@ func _outbox_slot_center(index: int) -> Vector2:
 ## Create a number box on the stage centred at a point.
 func _new_box(value: int, center: Vector2) -> NumberBox:
 	var nb := NumberBox.new(value)
-	(_stage if _stage else self).add_child(nb)
+	(_stage if _stage else _content_root).add_child(nb)
 	nb.place_centered(center)
 	return nb
 
@@ -404,6 +423,7 @@ func _carry_global() -> Vector2:
 func _clear_children() -> void:
 	for child in get_children():
 		child.queue_free()
+	_content_root = null
 	_stage = null
 	worker = null
 	_inbox_boxes.clear()
@@ -411,3 +431,35 @@ func _clear_children() -> void:
 	_tile_boxes.clear()
 	_active_animation_tweens.clear()
 	_animation_speed_scale = 1.0
+
+func apply_ui_scale() -> void:
+	_apply_ui_scale_recursive(self)
+
+func _ensure_content_root() -> void:
+	_content_root = Control.new()
+	_content_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_content_root.size = _virtual_size
+	add_child(_content_root)
+	_update_content_transform()
+
+func _update_content_transform() -> void:
+	if size.x <= 0.0 or size.y <= 0.0:
+		return
+	_content_scale = minf(size.x / _virtual_size.x, size.y / _virtual_size.y)
+	_content_scale = maxf(_content_scale, 0.05)
+	_content_offset = (size - _virtual_size * _content_scale) * 0.5
+	if _content_root:
+		_content_root.position = _content_offset
+		_content_root.scale = Vector2(_content_scale, _content_scale)
+		_content_root.size = _virtual_size
+
+func _apply_ui_scale_recursive(node: Node) -> void:
+	if node is Label and node.has_meta("base_font_size"):
+		var label := node as Label
+		VisualTheme.apply_font_size(label, int(label.get_meta("base_font_size")), 6, 184)
+		if label.text == "PICK" or label.text == "SEND":
+			label.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 24))
+	elif node is NumberBox:
+		(node as NumberBox).apply_ui_scale()
+	for child in node.get_children():
+		_apply_ui_scale_recursive(child)

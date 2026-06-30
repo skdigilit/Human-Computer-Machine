@@ -52,6 +52,7 @@ var _manual_step_loop_active: bool = false
 var _delay: float = 0.4
 
 func _ready() -> void:
+	VisualTheme.set_viewport_size(get_viewport_rect().size)
 	theme = VisualTheme.make_ui_theme()
 	_levels = LevelLibrary.all_levels()
 	_level = _levels[_level_index]
@@ -60,15 +61,34 @@ func _ready() -> void:
 	_build_background()
 	_build_panels()
 	_room_visual_size = _compute_initial_room_size(get_viewport_rect().size)
+	_room.set_virtual_size(_room_visual_size)
 	_palette_sidebar_ratio = _compute_initial_palette_sidebar_ratio(get_viewport_rect().size, _room_visual_size.x)
 	_layout_panels(get_viewport_rect().size)
 	_wire_signals()
 	_delay = _control_bar.initial_delay()
 	_start_fresh()
+	_apply_ui_scale(false)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _room != null:
+		if VisualTheme.set_viewport_size(get_viewport_rect().size):
+			_apply_ui_scale(false)
 		_layout_panels(get_viewport_rect().size)
+
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventKey):
+		return
+	var key := event as InputEventKey
+	if not key.pressed or key.echo:
+		return
+	if _is_scale_up_key(key):
+		if VisualTheme.adjust_user_ui_scale(1):
+			_apply_ui_scale()
+		accept_event()
+	elif _is_scale_down_key(key):
+		if VisualTheme.adjust_user_ui_scale(-1):
+			_apply_ui_scale()
+		accept_event()
 
 # --- Construction -------------------------------------------------------------
 
@@ -97,83 +117,149 @@ func _build_panels() -> void:
 
 	_win_banner = Label.new()
 	_win_banner.text = "GREAT JOB!"
-	_win_banner.add_theme_font_size_override("font_size", 64)
 	_win_banner.add_theme_color_override("font_color", Color.html("#FFE066"))
 	_win_banner.add_theme_color_override("font_outline_color", Color.html("#5A4A10"))
-	_win_banner.add_theme_constant_override("outline_size", 8)
 	_win_banner.position = Vector2(120, 1200)
 	_win_banner.visible = false
 	add_child(_win_banner)
+	_apply_win_banner_scale()
 
 func _compute_initial_room_size(viewport_size: Vector2) -> Vector2:
-	var available_width := viewport_size.x - PANEL_GAP * 4.0
-	var palette_width := maxf(MIN_PALETTE_WIDTH, viewport_size.x * PALETTE_WIDTH_RATIO)
-	var editor_width := maxf(MIN_EDITOR_WIDTH, viewport_size.x - viewport_size.x * ROOM_WIDTH_RATIO - palette_width - PANEL_GAP * 4.0)
+	var gap := _panel_gap()
+	var available_width := viewport_size.x - gap * 4.0
+	var palette_width := maxf(_min_palette_width(), viewport_size.x * PALETTE_WIDTH_RATIO)
+	var editor_width := maxf(_min_editor_width(), viewport_size.x - viewport_size.x * ROOM_WIDTH_RATIO - palette_width - gap * 4.0)
 	var room_width := available_width - palette_width - editor_width
-	if room_width < MIN_ROOM_WIDTH:
-		room_width = MIN_ROOM_WIDTH
-		editor_width = maxf(MIN_EDITOR_WIDTH, available_width - room_width - palette_width)
+	if room_width < _min_room_width():
+		room_width = _min_room_width()
+		editor_width = maxf(_min_editor_width(), available_width - room_width - palette_width)
 
-	var control_height := maxf(MIN_CONTROL_HEIGHT, viewport_size.y * CONTROL_HEIGHT_RATIO)
-	var room_height := viewport_size.y - control_height - PANEL_GAP * 3.0
+	var control_height := maxf(_min_control_height(), viewport_size.y * CONTROL_HEIGHT_RATIO)
+	var room_height := viewport_size.y - control_height - gap * 3.0
 	return Vector2(room_width, room_height)
 
 func _compute_initial_palette_sidebar_ratio(viewport_size: Vector2, room_width: float) -> float:
-	var right_width := maxf(1.0, viewport_size.x - room_width - PANEL_GAP * 4.0)
-	var palette_width := minf(right_width, maxf(MIN_PALETTE_WIDTH, viewport_size.x * PALETTE_WIDTH_RATIO))
+	var gap := _panel_gap()
+	var right_width := maxf(1.0, viewport_size.x - room_width - gap * 4.0)
+	var palette_width := minf(right_width, maxf(_min_palette_width(), viewport_size.x * PALETTE_WIDTH_RATIO))
 	return clampf(palette_width / right_width, 0.0, 1.0)
 
 ## Size every panel from the current window while preserving room coordinates.
 func _layout_panels(viewport_size: Vector2) -> void:
+	var gap := _panel_gap()
 	if _room_visual_size == Vector2.ZERO:
 		_room_visual_size = _compute_initial_room_size(viewport_size)
 	if _palette_sidebar_ratio <= 0.0:
 		_palette_sidebar_ratio = _compute_initial_palette_sidebar_ratio(viewport_size, _room_visual_size.x)
 
-	var room_width := _room_visual_size.x
-	var available_room_and_controls_height := maxf(0.0, viewport_size.y - PANEL_GAP * 3.0)
-	var desired_control_height := maxf(
-		MIN_CONTROL_HEIGHT,
-		viewport_size.y - _room_visual_size.y - PANEL_GAP * 3.0
+	var content_width := maxf(1.0, viewport_size.x - gap * 4.0)
+	var control_height := clampf(
+		maxf(_min_control_height(), viewport_size.y * CONTROL_HEIGHT_RATIO * VisualTheme.effective_ui_scale()),
+		minf(viewport_size.y * 0.18, viewport_size.y - gap * 3.0),
+		maxf(gap, viewport_size.y * 0.34)
 	)
-	var control_height := minf(available_room_and_controls_height, desired_control_height)
-	var room_height := available_room_and_controls_height - control_height
-	var right_width := maxf(1.0, viewport_size.x - room_width - PANEL_GAP * 4.0)
-	var palette_width := clampf(
-		right_width * _palette_sidebar_ratio,
-		minf(MIN_PALETTE_WIDTH, right_width),
-		right_width
-	)
-	var editor_width := maxf(1.0, right_width - palette_width)
-	var editor_x := room_width + palette_width + PANEL_GAP * 3.0
-	var max_briefing_height := maxf(
-		80.0,
-		viewport_size.y - MIN_PROGRAM_HEIGHT - PANEL_GAP * 3.0
-	)
-	var min_briefing_height := minf(MIN_BRIEFING_HEIGHT, max_briefing_height)
-	var briefing_height := clampf(
-		viewport_size.y * BRIEFING_HEIGHT_RATIO,
-		min_briefing_height,
-		max_briefing_height
-	)
+	var top_height := maxf(1.0, viewport_size.y - control_height - gap * 3.0)
+	var widths := _adaptive_column_widths(content_width)
+	var room_width: float = widths[0]
+	var palette_width: float = widths[1]
+	var editor_width: float = widths[2]
 
-	_room.position = Vector2(PANEL_GAP, PANEL_GAP)
-	_room.size = Vector2(room_width, room_height)
+	var editor_stack_height := maxf(1.0, top_height - gap)
+	var briefing_height := editor_stack_height * 0.25
+	var program_height := editor_stack_height - briefing_height
 
-	_control_bar.position = Vector2(PANEL_GAP, PANEL_GAP * 2.0 + room_height)
-	_control_bar.size = Vector2(room_width, control_height)
+	_room.position = Vector2(gap, gap)
+	_room.size = Vector2(room_width, top_height)
+	var actual_room_width := minf(_room.size.x, maxf(1.0, viewport_size.x - gap * 4.0))
+	_room.size = Vector2(actual_room_width, top_height)
 
-	_palette.position = Vector2(room_width + PANEL_GAP * 2.0, PANEL_GAP)
-	_palette.size = Vector2(palette_width, viewport_size.y - PANEL_GAP * 2.0)
+	_control_bar.position = Vector2(gap, gap * 2.0 + top_height)
+	_control_bar.size = Vector2(maxf(1.0, viewport_size.x - gap * 2.0), control_height)
 
-	_briefing.position = Vector2(editor_x, PANEL_GAP)
+	_palette.position = Vector2(actual_room_width + gap * 2.0, gap)
+	_palette.size = Vector2(palette_width, top_height)
+	var max_palette_width := maxf(1.0, viewport_size.x - _palette.position.x - gap * 2.0)
+	var actual_palette_width := minf(_palette.size.x, max_palette_width)
+	_palette.size = Vector2(actual_palette_width, top_height)
+
+	var editor_x := actual_room_width + actual_palette_width + gap * 3.0
+	editor_width = maxf(1.0, viewport_size.x - editor_x - gap)
+	_briefing.position = Vector2(editor_x, gap)
 	_briefing.size = Vector2(editor_width, briefing_height)
 
-	_program_list.position = Vector2(editor_x, briefing_height + PANEL_GAP * 2.0)
-	_program_list.size = Vector2(
-		editor_width,
-		viewport_size.y - briefing_height - PANEL_GAP * 3.0
+	_program_list.position = Vector2(editor_x, briefing_height + gap * 2.0)
+	_program_list.size = Vector2(editor_width, program_height)
+
+func _adaptive_column_widths(content_width: float) -> Array[float]:
+	var ui_scale := VisualTheme.effective_ui_scale()
+	var base_room_width := _room_visual_size.x if _room_visual_size != Vector2.ZERO else content_width * ROOM_WIDTH_RATIO
+	var room_min := minf(base_room_width, maxf(320.0, content_width * 0.24))
+	var base_right_width := maxf(1.0, content_width - base_room_width)
+	var right_width := clampf(base_right_width * ui_scale, 1.0, content_width - room_min)
+	var room_width := content_width - right_width
+	var palette_ratio := clampf(_palette_sidebar_ratio, 0.18, 0.42)
+	var palette_width := right_width * palette_ratio
+	var editor_width := right_width - palette_width
+	return [room_width, palette_width, editor_width]
+
+func _panel_gap() -> float:
+	return VisualTheme.scaled(PANEL_GAP, 4.0, 36.0)
+
+func _min_room_width() -> float:
+	return MIN_ROOM_WIDTH
+
+func _min_palette_width() -> float:
+	return VisualTheme.scaled(MIN_PALETTE_WIDTH, 90.0, 1440.0)
+
+func _min_editor_width() -> float:
+	return VisualTheme.scaled(MIN_EDITOR_WIDTH, 170.0, 2560.0)
+
+func _min_control_height() -> float:
+	return VisualTheme.scaled(MIN_CONTROL_HEIGHT, 56.0, 880.0)
+
+func _min_briefing_height() -> float:
+	return VisualTheme.scaled(MIN_BRIEFING_HEIGHT, 110.0, 1680.0)
+
+func _min_program_height() -> float:
+	return VisualTheme.scaled(MIN_PROGRAM_HEIGHT, 130.0, 2080.0)
+
+func _apply_ui_scale(rebuild_dynamic_panels: bool = true) -> void:
+	theme = VisualTheme.make_ui_theme()
+	_apply_win_banner_scale()
+	if _control_bar:
+		_control_bar.apply_ui_scale()
+	if rebuild_dynamic_panels:
+		if _briefing and _level:
+			_briefing.set_level(_level, _level_index, _levels.size())
+		if _palette and _level:
+			_palette.build(_level)
+		if _program_list and _program:
+			_program_list.apply_ui_scale()
+	if _room:
+		_room.apply_ui_scale()
+	_layout_panels(get_viewport_rect().size)
+
+func _apply_win_banner_scale() -> void:
+	if _win_banner == null:
+		return
+	VisualTheme.apply_font_size(_win_banner, 64, 24, 180)
+	_win_banner.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 28))
+
+func _is_scale_up_key(key: InputEventKey) -> bool:
+	return (
+		key.unicode == 43
+		or _matches_key(key, [KEY_PLUS, KEY_KP_ADD])
+		or (_matches_key(key, [KEY_EQUAL]) and key.shift_pressed)
 	)
+
+func _is_scale_down_key(key: InputEventKey) -> bool:
+	return key.unicode == 45 or _matches_key(key, [KEY_MINUS, KEY_KP_SUBTRACT])
+
+func _matches_key(key: InputEventKey, codes: Array[int]) -> bool:
+	for code in codes:
+		if key.keycode == code or key.physical_keycode == code or key.key_label == code:
+			return true
+	return false
 
 func _wire_signals() -> void:
 	_control_bar.reset_requested.connect(_on_reset)
