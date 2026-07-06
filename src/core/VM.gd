@@ -112,6 +112,7 @@ func _exec_outbox(action: StepAction) -> void:
 	# Outputting a wrong value is an immediate, informative failure.
 	var idx := outbox.size() - 1
 	if idx >= _level.expected_outbox.size() or outbox[idx] != _level.expected_outbox[idx]:
+		action.wrong_outbox = true
 		_finish(action, false, "Wrong value sent to the OUTBOX!")
 
 func _exec_copyfrom(action: StepAction, inst: Instruction) -> void:

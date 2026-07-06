@@ -9,19 +9,30 @@ signal reset_requested()
 signal step_requested()
 signal play_toggled(should_run: bool)
 signal speed_changed(seconds_per_step: float)
+signal settings_requested()
 
 ## Speed slider maps linearly onto this delay range (fast .. slow).
 const FAST_DELAY := 0.06
 const SLOW_DELAY := 0.9
+const SFSymbolsScript := preload("res://src/ui/SFSymbols.gd")
+const STATUS_TONE_DEFAULT := 0
+const STATUS_TONE_SUCCESS := 1
+const STATUS_TONE_ERROR := 2
+const STATUS_DEFAULT_COLOR := "#F0E9DC"
+const STATUS_SUCCESS_COLOR := "#FFE066"
+const STATUS_SUCCESS_OUTLINE := "#5A4A10"
+const STATUS_ERROR_COLOR := "#D94A3A"
 
 var _play_button: Button
 var _status: Label
+var _status_tone: int = STATUS_TONE_DEFAULT
 var _running: bool = false
 var _margin: MarginContainer
 var _row: HBoxContainer
 var _speed_group: HBoxContainer
 var _speed_label: Label
 var _slider: HSlider
+var _settings_button: Button
 var _buttons: Array[Button] = []
 
 func _init() -> void:
@@ -74,14 +85,18 @@ func _ready() -> void:
 	_speed_group.add_child(_slider)
 
 	_status = Label.new()
-	_status.add_theme_color_override("font_color", Color.html("#F0E9DC"))
-	VisualTheme.apply_font_size(_status, 18)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.clip_text = true
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_status.custom_minimum_size = Vector2(1, VisualTheme.scaled(44.0, 28.0, 96.0))
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_apply_status_style(STATUS_TONE_DEFAULT)
 	_row.add_child(_status)
+
+	_settings_button = _make_icon_button("gearshape")
+	_settings_button.tooltip_text = "Settings"
+	_settings_button.pressed.connect(func() -> void: settings_requested.emit())
+	_row.add_child(_settings_button)
 
 ## Build a coloured pill button.
 func _make_button(text: String, color_hex: String) -> Button:
@@ -115,15 +130,17 @@ func apply_ui_scale() -> void:
 	if _slider:
 		_slider.custom_minimum_size = VisualTheme.scaled_size(Vector2(170, 44), Vector2(80, 20), Vector2(230, 96))
 	if _status:
-		VisualTheme.apply_font_size(_status, 18)
+		_apply_status_style(_status_tone)
 		_status.custom_minimum_size = Vector2(1, VisualTheme.scaled(44.0, 28.0, 96.0))
+	if _settings_button:
+		_apply_icon_button_size(_settings_button)
 
 func _apply_panel_style() -> void:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color.html(VisualTheme.ROOM_WALL)
 	style.border_color = Color.html(VisualTheme.PAPER)
 	style.set_border_width_all(VisualTheme.scaled_int(3, 1, 18))
-	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
 	add_theme_stylebox_override("panel", style)
 
 func _apply_transport_button_size(button: Button) -> void:
@@ -134,6 +151,27 @@ func _apply_transport_button_size(button: Button) -> void:
 		float(button.text.length()) * font_size * 0.76 + VisualTheme.scaled(36.0, 20.0, 56.0)
 	)
 	button.custom_minimum_size = Vector2(width, VisualTheme.scaled(44.0, 28.0, 96.0))
+
+func _make_icon_button(symbol: String) -> Button:
+	var button := Button.new()
+	button.icon = SFSymbolsScript.texture(symbol, Color.html(VisualTheme.PAPER))
+	button.expand_icon = true
+	button.focus_mode = Control.FOCUS_NONE
+	button.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	var normal := VisualTheme.make_box_style("#2A312D", "#59655B", 4)
+	var hover := VisualTheme.make_box_style("#3C463F", "#F7F2DE", 4)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", normal)
+	_apply_icon_button_size(button)
+	return button
+
+func _apply_icon_button_size(button: Button) -> void:
+	var edge := VisualTheme.scaled(44.0, 28.0, 96.0)
+	button.custom_minimum_size = Vector2(edge, edge)
+	button.add_theme_constant_override("icon_max_width", VisualTheme.scaled_int(24, 14, 56))
 
 func _on_play_pressed() -> void:
 	_running = not _running
@@ -158,5 +196,30 @@ func _refresh_play_button() -> void:
 	_apply_transport_button_size(_play_button)
 
 ## Show a message (level complete, errors, hints).
-func set_status(text: String) -> void:
+func set_status(text: String, tone: int = STATUS_TONE_DEFAULT) -> void:
+	_apply_status_style(tone)
 	_status.text = text
+
+func _apply_status_style(tone: int) -> void:
+	_status_tone = tone
+	if _status == null:
+		return
+	match tone:
+		STATUS_TONE_SUCCESS:
+			VisualTheme.apply_ui_font(_status, true, true)
+			VisualTheme.apply_font_size(_status, 24, 12, 64)
+			_status.add_theme_color_override("font_color", Color.html(STATUS_SUCCESS_COLOR))
+			_status.add_theme_color_override("font_outline_color", Color.html(STATUS_SUCCESS_OUTLINE))
+			_status.add_theme_constant_override("outline_size", VisualTheme.scaled_int(3, 1, 12))
+		STATUS_TONE_ERROR:
+			VisualTheme.apply_ui_font(_status, true)
+			VisualTheme.apply_font_size(_status, 24, 12, 64)
+			_status.add_theme_color_override("font_color", Color.html(STATUS_ERROR_COLOR))
+			_status.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0))
+			_status.add_theme_constant_override("outline_size", 0)
+		_:
+			VisualTheme.apply_ui_font(_status)
+			VisualTheme.apply_font_size(_status, 18)
+			_status.add_theme_color_override("font_color", Color.html(STATUS_DEFAULT_COLOR))
+			_status.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0))
+			_status.add_theme_constant_override("outline_size", 0)

@@ -25,6 +25,18 @@ var op: InstructionDef.Op
 var is_palette: bool
 ## The model object this block represents (null for palette blocks).
 var instruction: Instruction = null
+static var click_to_pickup_enabled: bool = false
+static var custom_cursor_enabled: bool = false
+## Whether the mouse is currently over a spot that would accept the drop in
+## flight, kept up to date every frame by both drag paths so the cursor can
+## swap between the grab and grab-err art.
+static var _drag_target_valid: bool = true
+static var _click_drag_data: Dictionary = {}
+static var _click_drag_preview: Control = null
+static var _click_drag_source: InstructionBlock = null
+## Set only for a jump-target pickup, so its rubber-band aim line can be
+## cleared from the list it started on once the pickup ends.
+static var _jump_pickup_list: ProgramListView = null
 
 var _memory_size: int = 0
 var _operand_button: Button = null
@@ -33,6 +45,11 @@ var _label: Label = null
 ## Visual flags combined by _apply_style: execution highlight and drop-candidate.
 var _active: bool = false
 var _candidate: bool = false
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_DRAG_END:
+		_drag_target_valid = true
+		_set_instruction_drag_cursor(false)
 
 func _init(p_op: InstructionDef.Op, p_is_palette: bool, p_instruction: Instruction = null) -> void:
 	op = p_op
@@ -64,6 +81,7 @@ func _ready() -> void:
 	_label = Label.new()
 	_label.text = InstructionDef.label_for(op)
 	_label.add_theme_color_override("font_color", Color.html("#FBF7EE"))
+	VisualTheme.apply_ui_font(_label)
 	VisualTheme.apply_font_size(_label, 17, 6, 160)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(_label)
@@ -79,9 +97,13 @@ func _build_operand(row: HBoxContainer) -> void:
 		_operand_button.pressed.connect(_on_cycle_address)
 		row.add_child(_operand_button)
 	elif kind == InstructionDef.OperandKind.JUMP:
-		# A draggable arrow handle: click cycles the target, drag wires it directly.
+		# A draggable arrow handle: click cycles the target, drag wires it
+		# directly — except in click-to-pickup mode, where a click instead
+		# starts a pickup (see JumpTargetHandle), so cycling is skipped there.
 		_target_button = JumpTargetHandle.new(self)
-		_target_button.pressed.connect(func() -> void: request_target_pick.emit(self))
+		_target_button.pressed.connect(func() -> void:
+			if not click_to_pickup_enabled:
+				request_target_pick.emit(self))
 		row.add_child(_target_button)
 
 ## A small light chip-button used for operands and jump targets.
@@ -93,6 +115,7 @@ func _make_chip(text: String) -> Button:
 	b.add_theme_stylebox_override("normal", style)
 	b.add_theme_stylebox_override("hover", style)
 	b.add_theme_stylebox_override("pressed", style)
+	VisualTheme.apply_ui_font(b)
 	VisualTheme.set_button_font_color(b, Color.html("#3A3526"))
 	VisualTheme.apply_button_size(b, Vector2(34, 28), 18, 20.0)
 	return b
@@ -152,6 +175,28 @@ func _apply_style() -> void:
 # --- Drag and drop ------------------------------------------------------------
 
 func _get_drag_data(_pos: Vector2) -> Variant:
+	# When click-to-pickup is on, holding and moving the mouse must not also
+	# start a native drag — that would race the click-to-pickup preview
+	# (started from _gui_input below) and let a plain click-drag-release
+	# reorder the line natively while the click-to-pickup preview is left
+	# stuck on screen. Click-to-pickup is the only path in that mode.
+	if click_to_pickup_enabled:
+		return null
+	var data := _make_drag_payload()
+	set_drag_preview(_make_preview())
+	_set_instruction_drag_cursor(true)
+	return data
+
+func _gui_input(event: InputEvent) -> void:
+	if not click_to_pickup_enabled:
+		return
+	if event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		if button.button_index == MOUSE_BUTTON_LEFT and button.pressed:
+			_start_click_pickup()
+			accept_event()
+
+func _make_drag_payload() -> Dictionary:
 	var data := {}
 	if is_palette:
 		data[DRAG_KIND] = DRAG_PALETTE
@@ -163,7 +208,6 @@ func _get_drag_data(_pos: Vector2) -> Variant:
 		var list := _find_program_list()
 		if list:
 			list._begin_reorder_drag(self)
-	set_drag_preview(_make_preview())
 	return data
 
 ## Godot only offers a drop to the top-most control under the cursor and does
@@ -198,6 +242,7 @@ func _make_preview() -> Control:
 	var lbl := Label.new()
 	lbl.text = InstructionDef.label_for(op)
 	lbl.add_theme_color_override("font_color", Color.html("#FBF7EE"))
+	VisualTheme.apply_ui_font(lbl)
 	VisualTheme.apply_font_size(lbl, 20, 6, 176)
 	var m := MarginContainer.new()
 	m.add_theme_constant_override("margin_left", VisualTheme.scaled_int(10, 4, 48))
@@ -207,3 +252,156 @@ func _make_preview() -> Control:
 	m.add_child(lbl)
 	preview.add_child(m)
 	return preview
+
+func _start_click_pickup() -> void:
+	InstructionBlock.start_generic_click_pickup(_make_drag_payload(), _make_preview(), self, self)
+
+## Starts a click-to-pickup session for any draggable payload recognised by
+## ProgramListView.can_accept_at/drop_at — used by InstructionBlock itself
+## (palette/reorder) and by JumpTargetBox (wiring a jump target), so every
+## draggable in the program editor behaves the same way once click-to-pickup
+## is enabled instead of only some of them falling back to a held drag.
+## `reorder_source` is only needed for DRAG_REORDER payloads, so a dropped
+## reorder can be deleted if it lands outside every list; `jump_pickup_list`
+## is only needed for DRAG_JUMP_TARGET payloads, so the list's rubber-band
+## aim line gets cleared once the pickup ends.
+static func start_generic_click_pickup(data: Dictionary, preview: Control, tree_node: Node, reorder_source: InstructionBlock = null, jump_pickup_list: ProgramListView = null) -> void:
+	if _click_drag_preview != null:
+		return
+	var root := tree_node.get_tree().current_scene if tree_node.get_tree().current_scene != null else tree_node.get_tree().root
+	_click_drag_source = reorder_source
+	_jump_pickup_list = jump_pickup_list
+	_click_drag_data = data
+	_prepare_click_pickup_lists(root)
+	_click_drag_preview = preview
+	_click_drag_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_click_drag_preview.modulate.a = 0.92
+	tree_node.get_tree().root.add_child(_click_drag_preview)
+	update_click_pickup(tree_node.get_viewport().get_mouse_position(), root)
+	_set_instruction_drag_cursor(true)
+
+static func configure_custom_cursor(enabled: bool) -> void:
+	custom_cursor_enabled = enabled
+	if _click_drag_preview == null:
+		_set_instruction_drag_cursor(false)
+
+static func has_active_click_pickup() -> bool:
+	return _click_drag_preview != null
+
+static func update_click_pickup(mouse_position: Vector2, root: Node) -> void:
+	if _click_drag_preview == null or not is_instance_valid(_click_drag_preview):
+		return
+	_click_drag_preview.global_position = mouse_position + Vector2(10, 10)
+	_preview_click_drop_at(mouse_position, root)
+
+## Called every frame a native (Control _get_drag_data) drag is in flight, so
+## the grab/grab-err cursor swap tracks the mouse the same way it does for
+## click-to-pickup. Godot's built-in CURSOR_DRAG/CURSOR_CAN_DROP auto-switch
+## isn't reliable enough here (it doesn't consistently reflect `can_accept_at`
+## once a block is dragged over its own source list), so validity is instead
+## computed explicitly, exactly like the click-pickup path.
+static func update_native_drag_cursor(mouse_position: Vector2, root: Node) -> void:
+	if not custom_cursor_enabled:
+		return
+	var drag_data: Variant = root.get_viewport().gui_get_drag_data()
+	_update_drag_validity(_drag_target_at(mouse_position, root, drag_data))
+
+## True if dropping `drag_data` at `global_point` would land inside a
+## ProgramListView that accepts it — i.e. inside the instruction-code-area.
+static func _drag_target_at(global_point: Vector2, root: Node, drag_data: Variant) -> bool:
+	var lists: Array[ProgramListView] = []
+	_collect_program_lists(root, lists)
+	for list in lists:
+		if list.get_global_rect().has_point(global_point):
+			return list.can_accept_at(global_point, drag_data)
+	return false
+
+static func _update_drag_validity(valid: bool) -> void:
+	if valid != _drag_target_valid:
+		_drag_target_valid = valid
+		_set_instruction_drag_cursor(true)
+
+static func finish_click_pickup(global_point: Vector2, root: Node) -> bool:
+	if _click_drag_preview == null:
+		return false
+
+	var dropped := _drop_click_pickup(global_point, root)
+	if not dropped:
+		_delete_click_pickup_if_reorder()
+	_end_click_pickup()
+	return true
+
+static func _drop_click_pickup(global_point: Vector2, root: Node) -> bool:
+	var lists: Array[ProgramListView] = []
+	_collect_program_lists(root, lists)
+	for list in lists:
+		if not list.get_global_rect().has_point(global_point):
+			continue
+		if list.can_accept_at(global_point, _click_drag_data):
+			list.drop_at(global_point, _click_drag_data)
+			return true
+	return false
+
+static func _preview_click_drop_at(global_point: Vector2, root: Node) -> void:
+	var lists: Array[ProgramListView] = []
+	_collect_program_lists(root, lists)
+	var active_list: ProgramListView = null
+	for list in lists:
+		if active_list == null and list.get_global_rect().has_point(global_point):
+			active_list = list
+		else:
+			list.clear_drop_preview()
+	var valid := active_list != null and active_list.can_accept_at(global_point, _click_drag_data)
+	_update_drag_validity(valid)
+
+static func _prepare_click_pickup_lists(root: Node) -> void:
+	var lists: Array[ProgramListView] = []
+	_collect_program_lists(root, lists)
+	for list in lists:
+		list.begin_manual_drop_preview()
+
+static func _collect_program_lists(node: Node, out: Array[ProgramListView]) -> void:
+	if node is ProgramListView:
+		out.append(node)
+	for child in node.get_children():
+		_collect_program_lists(child, out)
+
+static func _delete_click_pickup_if_reorder() -> void:
+	if _click_drag_data.get(DRAG_KIND, "") != DRAG_REORDER:
+		return
+	if _click_drag_source == null or not is_instance_valid(_click_drag_source):
+		return
+	var list := _click_drag_source._find_program_list()
+	if list == null:
+		return
+	var idx := list.program.index_of_id(_click_drag_source.instruction.id)
+	if idx != -1:
+		list.program.remove_at(idx)
+		list.program_changed.emit()
+		list.rebuild()
+
+static func _end_click_pickup() -> void:
+	if _click_drag_preview != null and is_instance_valid(_click_drag_preview):
+		_click_drag_preview.queue_free()
+	_click_drag_preview = null
+	_click_drag_data = {}
+	_click_drag_source = null
+	if _jump_pickup_list != null and is_instance_valid(_jump_pickup_list):
+		_jump_pickup_list.cancel_jump_drag()
+	_jump_pickup_list = null
+	_drag_target_valid = true
+	_set_instruction_drag_cursor(false)
+
+## Swaps in the grab (or grab-err, once over an invalid drop spot) art while
+## a block is being dragged, and the plain pointer otherwise. The grab/grab-err
+## split is driven entirely by `_drag_target_valid` (kept up to date by
+## `update_native_drag_cursor` and `_preview_click_drop_at`) rather than by
+## which cursor shape Godot happens to pick during the drag.
+static func _set_instruction_drag_cursor(active: bool) -> void:
+	if not custom_cursor_enabled:
+		return
+	if active:
+		var state := SoftwareCursor.State.GRAB if _drag_target_valid else SoftwareCursor.State.GRAB_ERR
+		SoftwareCursor.set_state(state)
+	else:
+		SoftwareCursor.set_state(SoftwareCursor.State.POINTER)

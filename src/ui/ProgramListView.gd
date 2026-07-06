@@ -374,10 +374,23 @@ func _begin_reorder_drag(block: InstructionBlock) -> void:
 	if row:
 		row.modulate.a = ROW_DIM_ALPHA
 
+func begin_manual_drop_preview() -> void:
+	_cache_row_centers()
+	_drop_handled = false
+
 ## Called by a jump handle or blank target box when it starts being dragged.
 func _begin_jump_drag(block: InstructionBlock, origin: Control = null) -> void:
 	_jump_drag_source = block
 	_jump_drag_origin = origin
+
+## Ends a jump-target click-to-pickup session (see InstructionBlock's generic
+## click-pickup path), clearing the rubber-band aim line _draw() renders
+## while _jump_drag_source is set.
+func cancel_jump_drag() -> void:
+	_jump_drag_source = null
+	_jump_drag_origin = null
+	_clear_candidate()
+	queue_redraw()
 
 ## Clean up after any drag: delete a line dropped outside, clear visuals.
 func _end_drag_session() -> void:
@@ -437,6 +450,10 @@ func drop_at(global_point: Vector2, data: Variant) -> void:
 	set_active_line(-1)
 	rebuild()
 	program_changed.emit()
+
+func clear_drop_preview() -> void:
+	_hide_placeholder()
+	_clear_candidate()
 
 ## Move an existing line to the landing slot at the drop point.
 func _apply_reorder(moved: InstructionBlock, global_point: Vector2) -> void:

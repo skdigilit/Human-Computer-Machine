@@ -7,6 +7,9 @@ var value: int = 0
 
 var _panel: Panel
 var _label: Label
+var _fill_hex: String = VisualTheme.BOX_FILL
+var _border_hex: String = VisualTheme.BOX_BORDER
+var _text_hex: String = VisualTheme.BOX_TEXT
 
 func _init(p_value: int = 0) -> void:
 	value = p_value
@@ -19,9 +22,7 @@ func _init(p_value: int = 0) -> void:
 func _ready() -> void:
 	_panel = Panel.new()
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_panel.add_theme_stylebox_override(
-		"panel", VisualTheme.make_box_style(VisualTheme.BOX_FILL, VisualTheme.BOX_BORDER, 0)
-	)
+	_panel.add_theme_stylebox_override("panel", VisualTheme.make_box_style(_fill_hex, _border_hex, 0))
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_panel)
 
@@ -29,7 +30,7 @@ func _ready() -> void:
 	_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_label.add_theme_color_override("font_color", Color.html(VisualTheme.BOX_TEXT))
+	_label.add_theme_color_override("font_color", Color.html(_text_hex))
 	VisualTheme.apply_font_size(_label, 32, 8, 184)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
@@ -44,6 +45,15 @@ func set_value(p_value: int) -> void:
 	value = p_value
 	if is_instance_valid(_label):
 		_refresh()
+
+func set_palette(fill_hex: String, border_hex: String, text_hex: String = VisualTheme.BOX_TEXT) -> void:
+	_fill_hex = fill_hex
+	_border_hex = border_hex
+	_text_hex = text_hex
+	if is_instance_valid(_panel):
+		_panel.add_theme_stylebox_override("panel", VisualTheme.make_box_style(_fill_hex, _border_hex, 0))
+	if is_instance_valid(_label):
+		_label.add_theme_color_override("font_color", Color.html(_text_hex))
 
 func _refresh() -> void:
 	_label.text = str(value)

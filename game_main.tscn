@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://d0mjxrcyl2ese"]
 
 [ext_resource type="Script" uid="uid://6qbe7ud226ma" path="res://src/Game.gd" id="1_game"]
+[ext_resource type="Texture2D" uid="uid://dkkjxte6fxyh8" path="res://cursors/mickey-grab-err.svg" id="2_tjf8n"]
 
 [node name="Game" type="Control" unique_id=84253640]
 layout_mode = 3
@@ -10,3 +11,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_game")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1313314551]
+visible = false
+top_level = true
+position = Vector2(540, 396)
+scale = Vector2(0.328125, 0.328125)
+texture = ExtResource("2_tjf8n")

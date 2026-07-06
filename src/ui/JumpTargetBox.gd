@@ -13,12 +13,27 @@ func _init(p_owner: InstructionBlock) -> void:
 	tooltip_text = "Jump target\nDrag this box onto a command to change the target."
 
 func _get_drag_data(_pos: Vector2) -> Variant:
+	if InstructionBlock.click_to_pickup_enabled:
+		return null
 	var list := _find_program_list()
 	if list == null:
 		return null
 	list._begin_jump_drag(owner_block, self)
 	set_drag_preview(_make_preview())
 	return drag_payload()
+
+func _gui_input(event: InputEvent) -> void:
+	if not InstructionBlock.click_to_pickup_enabled:
+		return
+	if event is InputEventMouseButton:
+		var button := event as InputEventMouseButton
+		if button.button_index == MOUSE_BUTTON_LEFT and button.pressed:
+			var list := _find_program_list()
+			if list == null:
+				return
+			list._begin_jump_drag(owner_block, self)
+			InstructionBlock.start_generic_click_pickup(drag_payload(), _make_preview(), self, null, list)
+			accept_event()
 
 func drag_payload() -> Dictionary:
 	return {

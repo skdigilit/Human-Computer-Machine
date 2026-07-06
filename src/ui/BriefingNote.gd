@@ -10,6 +10,9 @@ signal next_requested()
 var _body: Label
 var _problem_text: String = ""
 var _hint_text: String = ""
+var _hint_button: Button
+var _show_hint_button: bool = true
+var _hint_visible: bool = false
 
 func _init() -> void:
 	clip_contents = true
@@ -60,6 +63,11 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	counter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(counter)
 
+	_hint_button = _make_nav_button("?")
+	_hint_button.tooltip_text = "Show hint"
+	_hint_button.pressed.connect(show_hint)
+	header.add_child(_hint_button)
+
 	var next := _make_nav_button(">")
 	next.disabled = index >= total - 1
 	next.pressed.connect(func() -> void: next_requested.emit())
@@ -76,6 +84,8 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	var briefing_parts := level.briefing.split("\n\n", false, 1)
 	_problem_text = briefing_parts[0]
 	_hint_text = briefing_parts[1] if briefing_parts.size() > 1 else ""
+	_hint_visible = false
+	_refresh_hint_button()
 
 	_body = Label.new()
 	_body.text = _problem_text
@@ -99,10 +109,21 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	scroll.add_child(body_width)
 	column.add_child(scroll)
 
+## Toggles the hint text on/off in the briefing body.
 func show_hint() -> void:
 	if _body == null or _hint_text.is_empty():
 		return
-	_body.text = _problem_text + "\n\n" + _hint_text
+	_hint_visible = not _hint_visible
+	_body.text = _problem_text + "\n\n" + _hint_text if _hint_visible else _problem_text
+
+func set_hint_button_visible(show: bool) -> void:
+	_show_hint_button = show
+	_refresh_hint_button()
+
+func _refresh_hint_button() -> void:
+	if _hint_button == null:
+		return
+	_hint_button.visible = _show_hint_button and not _hint_text.is_empty()
 
 func _make_nav_button(text: String) -> Button:
 	var button := Button.new()

@@ -24,6 +24,8 @@ var held_value: int = NULL_VALUE
 ## Whether a memory tile's value changed (bump / copyto), and to what.
 var memory_changed: bool = false
 var memory_value: int = 0
+## True when this step placed an incorrect value into the OUTBOX.
+var wrong_outbox: bool = false
 
 ## Set when the program finished (successfully or with an error).
 var halted: bool = false

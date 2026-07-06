@@ -29,7 +29,8 @@ const RESIZE_NONE := 0
 const RESIZE_PALETTE_SPLIT := 1
 const RESIZE_EDITOR_SPLIT := 2
 const RESIZE_ROOM_SPLIT := 3
-const WIN_BANNER_BOTTOM_GAP_RATIO := 0.20
+const HCMSettingsScript := preload("res://src/ui/HCMSettings.gd")
+const SettingsOverlayScript := preload("res://src/ui/SettingsOverlay.gd")
 
 var _level: Level
 var _levels: Array[Level] = []
@@ -39,6 +40,7 @@ var _program_pages: Array[Program] = []
 var _active_page: int = 0
 var _saved_levels: Dictionary = {}
 var _save_path: String = DEFAULT_SAVE_PATH
+var _settings_path: String = HCMSettingsScript.SETTINGS_PATH
 var _vm: VM = null
 
 var _room: RoomView
@@ -46,11 +48,14 @@ var _palette: InstructionPalette
 var _briefing: BriefingNote
 var _program_list: ProgramListView
 var _control_bar: ControlBar
-var _win_banner: Label
+var _settings: RefCounted
+var _settings_layer: CanvasLayer
+var _settings_overlay: Control
 var _room_visual_size: Vector2 = Vector2.ZERO
 var _palette_sidebar_ratio: float = 0.0
 var _editor_question_ratio: float = BRIEFING_HEIGHT_RATIO
 var _resize_kind: int = RESIZE_NONE
+var _resize_cursor_active: bool = false
 
 var _running: bool = false
 var _busy: bool = false
@@ -60,22 +65,42 @@ var _manual_step_loop_active: bool = false
 var _delay: float = 0.4
 
 func _ready() -> void:
+	set_process(true)
 	VisualTheme.set_viewport_size(get_viewport_rect().size)
 	theme = VisualTheme.make_ui_theme()
+	_settings = HCMSettingsScript.new()
+	_settings.settings_path = _settings_path
+	_settings.load_from_disk()
+	VisualTheme.user_ui_scale = _settings.get_number(HCMSettingsScript.UI_SCALE)
 	_levels = LevelLibrary.all_levels()
+	_level_index = clampi(
+		_settings.get_int(HCMSettingsScript.CURRENT_LEVEL_INDEX),
+		0,
+		maxi(0, _levels.size() - 1)
+	)
 	_level = _levels[_level_index]
 	_load_saved_levels()
 	_load_level_pages()
 	_build_background()
 	_build_panels()
 	_room_visual_size = _compute_initial_room_size(get_viewport_rect().size)
+	var saved_room_width: float = _settings.get_number(HCMSettingsScript.ROOM_WIDTH)
+	if saved_room_width > 0.0:
+		_room_visual_size.x = saved_room_width
 	_room.set_virtual_size(_room_visual_size)
 	_palette_sidebar_ratio = _compute_initial_palette_sidebar_ratio(get_viewport_rect().size, _room_visual_size.x)
+	var saved_palette_ratio: float = _settings.get_number(HCMSettingsScript.PALETTE_SIDEBAR_RATIO)
+	if saved_palette_ratio > 0.0:
+		_palette_sidebar_ratio = saved_palette_ratio
+	var saved_editor_ratio: float = _settings.get_number(HCMSettingsScript.EDITOR_QUESTION_RATIO)
+	if saved_editor_ratio > 0.0:
+		_editor_question_ratio = saved_editor_ratio
 	_layout_panels(get_viewport_rect().size)
 	_wire_signals()
 	_delay = _control_bar.initial_delay()
 	_start_fresh()
 	_apply_ui_scale(false)
+	_apply_settings()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _room != null:
@@ -83,7 +108,30 @@ func _notification(what: int) -> void:
 			_apply_ui_scale(false)
 		_layout_panels(get_viewport_rect().size)
 
+func _process(_delta: float) -> void:
+	if InstructionBlock.has_active_click_pickup():
+		InstructionBlock.update_click_pickup(get_viewport().get_mouse_position(), self)
+	elif get_viewport().gui_is_dragging():
+		InstructionBlock.update_native_drag_cursor(get_viewport().get_mouse_position(), self)
+
 func _input(event: InputEvent) -> void:
+	if _settings_overlay != null and _settings_overlay.visible:
+		if event is InputEventKey:
+			var overlay_key := event as InputEventKey
+			if overlay_key.pressed and not overlay_key.echo and _matches_key(overlay_key, [KEY_ESCAPE]):
+				_close_settings()
+				accept_event()
+		return
+	if event is InputEventMouseButton:
+		var click := event as InputEventMouseButton
+		if click.button_index == MOUSE_BUTTON_LEFT and click.pressed and InstructionBlock.finish_click_pickup(click.position, self):
+			accept_event()
+			return
+	elif event is InputEventMouseMotion and InstructionBlock.has_active_click_pickup():
+		var motion := event as InputEventMouseMotion
+		InstructionBlock.update_click_pickup(motion.position, self)
+		accept_event()
+		return
 	if _handle_resize_input(event):
 		return
 	if event is InputEventKey:
@@ -93,10 +141,12 @@ func _input(event: InputEvent) -> void:
 		if _is_scale_up_key(key):
 			if VisualTheme.adjust_user_ui_scale(1):
 				_apply_ui_scale()
+				_save_ui_scale_setting()
 			accept_event()
 		elif _is_scale_down_key(key):
 			if VisualTheme.adjust_user_ui_scale(-1):
 				_apply_ui_scale()
+				_save_ui_scale_setting()
 			accept_event()
 		elif _is_show_hint_key(key):
 			_briefing.show_hint()
@@ -127,14 +177,13 @@ func _build_panels() -> void:
 	_program_list = ProgramListView.new()
 	add_child(_program_list)
 
-	_win_banner = Label.new()
-	_win_banner.text = "GREAT JOB!"
-	_win_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_win_banner.add_theme_color_override("font_color", Color.html("#FFE066"))
-	_win_banner.add_theme_color_override("font_outline_color", Color.html("#5A4A10"))
-	_win_banner.visible = false
-	add_child(_win_banner)
-	_apply_win_banner_scale()
+	_settings_layer = CanvasLayer.new()
+	_settings_layer.layer = 100
+	add_child(_settings_layer)
+
+	_settings_overlay = SettingsOverlayScript.new()
+	_settings_overlay.setup(_settings.values)
+	_settings_layer.add_child(_settings_overlay)
 
 func _compute_initial_room_size(viewport_size: Vector2) -> Vector2:
 	var gap := _panel_gap()
@@ -201,7 +250,6 @@ func _layout_panels(viewport_size: Vector2) -> void:
 
 	_program_list.position = Vector2(editor_x, briefing_height + gap * 2.0)
 	_program_list.size = Vector2(editor_width, program_height)
-	_layout_win_banner()
 
 func _adaptive_column_widths(content_width: float) -> Array[float]:
 	var ui_scale := VisualTheme.effective_ui_scale()
@@ -257,9 +305,10 @@ func _min_program_height() -> float:
 
 func _apply_ui_scale(rebuild_dynamic_panels: bool = true) -> void:
 	theme = VisualTheme.make_ui_theme()
-	_apply_win_banner_scale()
 	if _control_bar:
 		_control_bar.apply_ui_scale()
+	if _settings_overlay:
+		_settings_overlay.apply_ui_scale()
 	if rebuild_dynamic_panels:
 		if _briefing and _level:
 			_briefing.set_level(_level, _level_index, _levels.size())
@@ -270,24 +319,6 @@ func _apply_ui_scale(rebuild_dynamic_panels: bool = true) -> void:
 	if _room:
 		_room.apply_ui_scale()
 	_layout_panels(get_viewport_rect().size)
-
-func _apply_win_banner_scale() -> void:
-	if _win_banner == null:
-		return
-	VisualTheme.apply_font_size(_win_banner, 64, 24, 180)
-	_win_banner.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 28))
-	_layout_win_banner()
-
-func _layout_win_banner() -> void:
-	if _win_banner == null or _room == null:
-		return
-	var decoration_rect := _room.bottom_decoration_rect()
-	var banner_size := _win_banner.get_combined_minimum_size()
-	_win_banner.size = Vector2(decoration_rect.size.x, banner_size.y)
-	_win_banner.position = _room.position + Vector2(
-		decoration_rect.get_center().x - _win_banner.size.x * 0.5,
-		decoration_rect.position.y - _win_banner.size.y - decoration_rect.size.y * WIN_BANNER_BOTTOM_GAP_RATIO
-	)
 
 func _is_scale_up_key(key: InputEventKey) -> bool:
 	return (
@@ -321,6 +352,7 @@ func _handle_resize_input(event: InputEvent) -> bool:
 		elif _resize_kind != RESIZE_NONE:
 			_resize_kind = RESIZE_NONE
 			_update_resize_cursor(button.position, _event_resize_modifier_pressed(button))
+			_save_panel_layout_settings()
 			accept_event()
 			return true
 	elif event is InputEventMouseMotion:
@@ -329,7 +361,11 @@ func _handle_resize_input(event: InputEvent) -> bool:
 			_apply_panel_resize(motion.position)
 			accept_event()
 			return true
-		_update_resize_cursor(motion.position, _event_resize_modifier_pressed(motion))
+		if _event_resize_modifier_pressed(motion):
+			_update_resize_cursor(motion.position, true)
+		elif _resize_cursor_active:
+			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+			_resize_cursor_active = false
 	return false
 
 func _event_resize_modifier_pressed(event: InputEventWithModifiers) -> bool:
@@ -351,10 +387,13 @@ func _update_resize_cursor(mouse_position: Vector2, modifier_pressed: bool) -> v
 	match _resize_edge_at(mouse_position, modifier_pressed):
 		RESIZE_PALETTE_SPLIT, RESIZE_ROOM_SPLIT:
 			Input.set_default_cursor_shape(Input.CURSOR_HSIZE)
+			_resize_cursor_active = true
 		RESIZE_EDITOR_SPLIT:
 			Input.set_default_cursor_shape(Input.CURSOR_VSIZE)
+			_resize_cursor_active = true
 		_:
 			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+			_resize_cursor_active = false
 
 func _resize_edge_thickness() -> float:
 	return VisualTheme.scaled(RESIZE_EDGE_THICKNESS, 6.0, 32.0)
@@ -431,11 +470,14 @@ func _wire_signals() -> void:
 	_control_bar.step_requested.connect(_on_step)
 	_control_bar.play_toggled.connect(_on_play_toggled)
 	_control_bar.speed_changed.connect(func(d: float) -> void: _delay = d)
+	_control_bar.settings_requested.connect(_open_settings)
 	_program_list.program_changed.connect(_on_program_changed)
 	_program_list.page_requested.connect(_on_page_requested)
 	_program_list.add_page_requested.connect(_on_add_page_requested)
 	_briefing.previous_requested.connect(func() -> void: _select_level(_level_index - 1))
 	_briefing.next_requested.connect(func() -> void: _select_level(_level_index + 1))
+	_settings_overlay.close_requested.connect(_close_settings)
+	_settings_overlay.settings_confirmed.connect(_on_settings_confirmed)
 
 # --- Level / run lifecycle ----------------------------------------------------
 
@@ -445,6 +487,7 @@ func _start_fresh() -> void:
 	_palette.build(_level)
 	_program_list.setup(_program, _level.memory_size, _active_page, _program_pages.size())
 	_reset_run()
+	_apply_settings()
 
 func _select_level(index: int) -> void:
 	if index < 0 or index >= _levels.size() or index == _level_index:
@@ -452,6 +495,7 @@ func _select_level(index: int) -> void:
 	_save_current_level()
 	_level_index = index
 	_level = _levels[_level_index]
+	_save_current_level_index()
 	_load_level_pages()
 	_start_fresh()
 
@@ -463,8 +507,8 @@ func _reset_run() -> void:
 	_step_buffered = false
 	_vm = null
 	_room.setup(_level)
+	_room.set_show_expected_outbox_boxes(_settings.is_enabled(HCMSettingsScript.SHOW_OUTBOX_EXPECTED_BOXES), _level)
 	_program_list.set_active_line(-1)
-	_win_banner.visible = false
 	_control_bar.set_running(false)
 	_control_bar.set_status("Drag a move into the list. Press RUN to watch it!")
 
@@ -620,5 +664,76 @@ func _finish(action: StepAction) -> void:
 	_running = false
 	_control_bar.set_running(false)
 	_program_list.set_active_line(-1)
-	_control_bar.set_status(action.message)
-	_win_banner.visible = action.success
+	if action.success:
+		_control_bar.set_status("GREAT JOB!", ControlBar.STATUS_TONE_SUCCESS)
+	elif action.wrong_outbox:
+		_control_bar.set_status("Wrong", ControlBar.STATUS_TONE_ERROR)
+	else:
+		_control_bar.set_status(action.message)
+
+# --- Settings ----------------------------------------------------------------
+
+func _open_settings() -> void:
+	_settings_overlay.setup(_settings.values)
+	_settings_overlay.open()
+
+func _close_settings() -> void:
+	_settings_overlay.close()
+
+## Applies and saves every setting at once, called when the overlay closes
+## rather than live as the user drags sliders or flips toggles.
+func _on_settings_confirmed(settings: Dictionary) -> void:
+	for key in settings.keys():
+		_settings.set_value(key, settings[key])
+	VisualTheme.user_ui_scale = clampf(
+		_settings.get_number(HCMSettingsScript.UI_SCALE),
+		VisualTheme.USER_UI_SCALE_MIN,
+		VisualTheme.USER_UI_SCALE_MAX
+	)
+	_apply_ui_scale()
+	_apply_settings()
+
+## Persists the UI scale after it was changed via the +/- keyboard shortcuts.
+func _save_ui_scale_setting() -> void:
+	_settings.set_value(HCMSettingsScript.UI_SCALE, VisualTheme.user_ui_scale)
+	if _settings_overlay != null:
+		_settings_overlay.setup(_settings.values)
+
+## Persists the room/palette/editor split ratios after a drag-resize ends.
+func _save_panel_layout_settings() -> void:
+	_settings.set_value(HCMSettingsScript.ROOM_WIDTH, _room_visual_size.x)
+	_settings.set_value(HCMSettingsScript.PALETTE_SIDEBAR_RATIO, _palette_sidebar_ratio)
+	_settings.set_value(HCMSettingsScript.EDITOR_QUESTION_RATIO, _editor_question_ratio)
+
+func _save_current_level_index() -> void:
+	if _settings == null:
+		return
+	_settings.set_value(HCMSettingsScript.CURRENT_LEVEL_INDEX, _level_index)
+
+func _apply_settings() -> void:
+	if _settings == null:
+		return
+	if _briefing:
+		_briefing.set_hint_button_visible(_settings.is_enabled(HCMSettingsScript.SHOW_HINT_BUTTON))
+	if _room and _level:
+		_room.set_show_expected_outbox_boxes(_settings.is_enabled(HCMSettingsScript.SHOW_OUTBOX_EXPECTED_BOXES), _level)
+	InstructionBlock.click_to_pickup_enabled = _settings.is_enabled(HCMSettingsScript.CLICK_TO_PICKUP_INSTRUCTION_BOX)
+	SoftwareCursor.set_size_scale(_settings.get_number(HCMSettingsScript.CURSOR_SIZE))
+	_apply_custom_cursor(_settings.is_enabled(HCMSettingsScript.CUSTOM_CURSOR))
+
+const SOFTWARE_CURSOR_SCENE := preload("res://src/visual/SoftwareCursor.tscn")
+
+## The live software cursor overlay, present only while the setting is on.
+var _software_cursor: SoftwareCursor = null
+
+## Adds/removes the SoftwareCursor scene, which hides the OS pointer and draws
+## the cursor art as a GPU sprite instead (crisp on HiDPI screens, unlike
+## Input.set_custom_mouse_cursor's fixed 1x hardware bitmaps).
+func _apply_custom_cursor(enabled: bool) -> void:
+	InstructionBlock.configure_custom_cursor(enabled)
+	if enabled and _software_cursor == null:
+		_software_cursor = SOFTWARE_CURSOR_SCENE.instantiate()
+		add_child(_software_cursor)
+	elif not enabled and _software_cursor != null:
+		_software_cursor.queue_free()
+		_software_cursor = null

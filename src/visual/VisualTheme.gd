@@ -22,6 +22,10 @@ const BOX_FILL := PAPER
 const BOX_FILL_DARK := "#E4DDBE"
 const BOX_BORDER := INK
 const BOX_TEXT := INK
+const BOX_SUCCESS_FILL := "#B8D9A6"
+const BOX_SUCCESS_BORDER := "#48683A"
+const BOX_ERROR_FILL := "#E7A8A1"
+const BOX_ERROR_BORDER := "#8B3C35"
 
 # --- Worker (Wilmort-style blocky character) ----------------------------------
 const WORKER_BODY := PAPER
@@ -49,6 +53,7 @@ const PICK_TIME := 0.22
 const BUMP_TIME := 0.15
 const UI_FONT := "res://Fonts/MonaspaceNeon-WideSemiBold.otf"
 const UI_FONT_BOLD := "res://Fonts/MonaspaceRadon-SemiWideBold.otf"
+const UI_FONT_HEAVY_ITALIC := "res://Fonts/MonaspaceNeon-BoldItalic.otf"
 
 static var user_ui_scale := 1.0
 static var viewport_ui_scale := 1.0
@@ -97,6 +102,14 @@ static func scaled_font_size(value: int, minimum: int = 6, maximum: int = 320) -
 
 static func apply_font_size(control: Control, base_size: int, minimum: int = 6, maximum: int = 320) -> void:
 	control.add_theme_font_size_override("font_size", scaled_font_size(base_size, minimum, maximum))
+
+static func apply_ui_font(control: Control, bold: bool = false, italic: bool = false) -> void:
+	var font_path := UI_FONT
+	if italic and bold:
+		font_path = UI_FONT_HEAVY_ITALIC
+	elif bold:
+		font_path = UI_FONT_BOLD
+	control.add_theme_font_override("font", load(font_path))
 
 static func label_min_width(text: String, base_font_size: int, horizontal_padding: float) -> float:
 	return float(text.length()) * float(scaled_font_size(base_font_size)) * 0.76 + scaled(horizontal_padding)

@@ -13,6 +13,8 @@ const CELL := VisualTheme.CELL_SIZE
 const CHUTE_TOP_ROW := 3
 const WORKER_HOME_CELL := Vector2(6.5, 5.5)
 const MANUAL_STEP_SPEED_SCALE := 4.0
+const INBOX_LABEL := "INBOX"
+const OUTBOX_LABEL := "OUTBOX"
 
 var _content_root: Control
 var _virtual_size: Vector2 = Vector2(1152, 900)
@@ -23,6 +25,8 @@ var worker: Worker
 
 var _inbox_boxes: Array[NumberBox] = []
 var _outbox_boxes: Array[NumberBox] = []
+var _expected_outbox_boxes: Array[NumberBox] = []
+var _expected_outbox_values: Array[int] = []
 var _tile_boxes: Array[NumberBox] = []     ## Per memory tile, may hold null.
 var _tile_centers: Array[Vector2] = []
 
@@ -32,6 +36,7 @@ var _chute_top: float
 var _worker_home: Vector2
 var _animation_speed_scale: float = 1.0
 var _active_animation_tweens: Array[Tween] = []
+var _show_expected_outbox_boxes: bool = false
 
 func _init() -> void:
 	clip_contents = true
@@ -86,14 +91,16 @@ func setup(level: Level) -> void:
 	_ensure_content_root()
 	_compute_layout(level)
 	_build_floor()
-	_build_chute(_inbox_x, "PICK")
-	_build_chute(_outbox_x, "SEND")
+	_build_chute(_inbox_x, INBOX_LABEL)
+	_build_chute(_outbox_x, OUTBOX_LABEL)
 	_build_tiles(level)
+	_expected_outbox_values = level.expected_outbox.duplicate()
 
 	_stage = Control.new()
 	_stage.size = _virtual_size
 	_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_content_root.add_child(_stage)
+	_build_expected_outbox_boxes()
 
 	worker = Worker.new()
 	_stage.add_child(worker)
@@ -166,7 +173,7 @@ func _build_chute(center_x: float, label_text: String) -> void:
 	sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_content_root.add_child(sign)
 
-## Empty memory cells with their index in the corner.
+## Empty memory cells with their index shown above the tile, clear of any box placed inside.
 func _build_tiles(level: Level) -> void:
 	_tile_boxes.clear()
 	for i in level.memory_size:
@@ -183,10 +190,12 @@ func _build_tiles(level: Level) -> void:
 
 		var idx := Label.new()
 		idx.text = str(i)
+		idx.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		idx.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
 		idx.set_meta("base_font_size", 18)
 		VisualTheme.apply_font_size(idx, 18, 6, 120)
-		idx.position = _tile_centers[i] + Vector2(CELL * 0.5 - 18, CELL * 0.5 - 26)
+		idx.size = Vector2(CELL, 24)
+		idx.position = _tile_centers[i] - Vector2(CELL * 0.5, CELL * 0.5 + 24)
 		idx.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_content_root.add_child(idx)
 
@@ -205,6 +214,12 @@ func _spawn_inbox(level: Level) -> void:
 		var nb := _new_box(level.inbox[i], _inbox_slot_center(i))
 		_inbox_boxes.append(nb)
 
+func set_show_expected_outbox_boxes(show: bool, level: Level = null) -> void:
+	_show_expected_outbox_boxes = show
+	if level != null:
+		_expected_outbox_values = level.expected_outbox.duplicate()
+	_build_expected_outbox_boxes()
+
 # --- Slot positions -----------------------------------------------------------
 
 func _inbox_slot_center(index: int) -> Vector2:
@@ -221,6 +236,25 @@ func _new_box(value: int, center: Vector2) -> NumberBox:
 	(_stage if _stage else _content_root).add_child(nb)
 	nb.place_centered(center)
 	return nb
+
+func _build_expected_outbox_boxes() -> void:
+	_clear_expected_outbox_boxes()
+	if not _show_expected_outbox_boxes or _content_root == null:
+		return
+	for i in _expected_outbox_values.size():
+		var nb := NumberBox.new(_expected_outbox_values[i])
+		nb.modulate.a = 0.46
+		_content_root.add_child(nb)
+		if _stage != null:
+			_content_root.move_child(nb, _stage.get_index())
+		nb.place_centered(_outbox_slot_center(i))
+		_expected_outbox_boxes.append(nb)
+
+func _clear_expected_outbox_boxes() -> void:
+	for box in _expected_outbox_boxes:
+		if is_instance_valid(box):
+			box.queue_free()
+	_expected_outbox_boxes.clear()
 
 # =====================================================================
 #  Animation — each returns once its tweens finish so the play loop can
@@ -279,6 +313,10 @@ func _do_outbox(action: StepAction) -> void:
 	var box := _detach_from_hand()
 	await _fly_box(box, slot, VisualTheme.PICK_TIME)
 	_outbox_boxes.append(box)
+	if action.wrong_outbox:
+		box.set_palette(VisualTheme.BOX_ERROR_FILL, VisualTheme.BOX_ERROR_BORDER)
+	else:
+		box.set_palette(VisualTheme.BOX_SUCCESS_FILL, VisualTheme.BOX_SUCCESS_BORDER)
 
 func _do_copyfrom(action: StepAction) -> void:
 	var center := _tile_centers[action.address]
@@ -435,6 +473,8 @@ func _clear_children() -> void:
 	worker = null
 	_inbox_boxes.clear()
 	_outbox_boxes.clear()
+	_expected_outbox_boxes.clear()
+	_expected_outbox_values.clear()
 	_tile_boxes.clear()
 	_active_animation_tweens.clear()
 	_animation_speed_scale = 1.0
@@ -464,7 +504,7 @@ func _apply_ui_scale_recursive(node: Node) -> void:
 	if node is Label and node.has_meta("base_font_size"):
 		var label := node as Label
 		VisualTheme.apply_font_size(label, int(label.get_meta("base_font_size")), 6, 184)
-		if label.text == "PICK" or label.text == "SEND":
+		if label.text == INBOX_LABEL or label.text == OUTBOX_LABEL:
 			label.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 24))
 	elif node is NumberBox:
 		(node as NumberBox).apply_ui_scale()

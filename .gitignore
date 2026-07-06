@@ -1,3 +1,23 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Local and personal files
+.DS_Store
+.claude/
+
+# Non-runtime notes and agent instructions
+AGENTS.md
+Human Resource Machine Game Overview.txt
+
+# Reference-only assets
+Inspiration Assets/
+
+# Keep only the theme fonts used at runtime
+Fonts/*
+!Fonts/MonaspaceNeon-BoldItalic.otf
+!Fonts/MonaspaceNeon-BoldItalic.otf.import
+!Fonts/MonaspaceNeon-WideSemiBold.otf
+!Fonts/MonaspaceNeon-WideSemiBold.otf.import
+!Fonts/MonaspaceRadon-SemiWideBold.otf
+!Fonts/MonaspaceRadon-SemiWideBold.otf.import
