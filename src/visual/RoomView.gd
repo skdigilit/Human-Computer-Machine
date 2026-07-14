@@ -15,6 +15,11 @@ const WORKER_HOME_CELL := Vector2(6.5, 5.5)
 const MANUAL_STEP_SPEED_SCALE := 4.0
 const INBOX_LABEL := "INBOX"
 const OUTBOX_LABEL := "OUTBOX"
+## Memory-tile index labels: font size, label height, and the gap lifting them
+## clear above their tile.
+const TILE_INDEX_FONT_SIZE := 22
+const TILE_INDEX_HEIGHT := 28
+const TILE_INDEX_GAP := 12
 
 var _content_root: Control
 var _virtual_size: Vector2 = Vector2(1152, 900)
@@ -91,8 +96,8 @@ func setup(level: Level) -> void:
 	_ensure_content_root()
 	_compute_layout(level)
 	_build_floor()
-	_build_chute(_inbox_x, INBOX_LABEL)
-	_build_chute(_outbox_x, OUTBOX_LABEL)
+	_build_chute(_inbox_x, INBOX_LABEL, Color.html(InstructionDef.COLOR_IO))
+	_build_chute(_outbox_x, OUTBOX_LABEL, Color.html(InstructionDef.COLOR_OUTBOX))
 	_build_tiles(level)
 	_expected_outbox_values = level.expected_outbox.duplicate()
 
@@ -139,13 +144,18 @@ func _bottom_decoration_row() -> int:
 func _build_floor() -> void:
 	queue_redraw()
 
-## A tall dark chute frame plus an IN/OUT sign.
-func _build_chute(center_x: float, label_text: String) -> void:
+## A tall dark chute frame plus an IN/OUT sign. The frame + dividers are painted
+## in `frame_color` — the green inbox family for the inbox, the teal outbox
+## family for the outbox — so each station visibly belongs to the command that
+## feeds it.
+func _build_chute(center_x: float, label_text: String, frame_color: Color) -> void:
 	var frame := Panel.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color.html(VisualTheme.ROOM_FLOOR_DARK)
-	style.border_color = Color.html(VisualTheme.STATION_FRAME)
-	style.set_border_width_all(4)
+	style.border_color = frame_color
+	# Draw the frame border outward so it stays visible once boxes fill the chute.
+	style.set_border_width_all(VisualTheme.CHUTE_BORDER_WIDTH)
+	style.set_expand_margin_all(VisualTheme.CHUTE_BORDER_EXPAND)
 	frame.add_theme_stylebox_override("panel", style)
 	frame.size = Vector2(CELL, CELL * 7)
 	frame.position = Vector2(center_x - CELL * 0.5, _chute_top)
@@ -154,7 +164,7 @@ func _build_chute(center_x: float, label_text: String) -> void:
 
 	for row in range(1, 7):
 		var divider := ColorRect.new()
-		divider.color = Color.html(VisualTheme.STATION_FRAME)
+		divider.color = frame_color
 		divider.position = Vector2(0, row * CELL - 2)
 		divider.size = Vector2(CELL, 4)
 		divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -173,15 +183,21 @@ func _build_chute(center_x: float, label_text: String) -> void:
 	sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_content_root.add_child(sign)
 
-## Empty memory cells with their index shown above the tile, clear of any box placed inside.
+## Empty memory cells with their index shown above the tile, clear of any box
+## placed inside. Tiles are tinted with the memory family salmon
+## (InstructionDef.COLOR_MEMORY) so the floor visibly belongs to the
+## copyfrom / copyto commands that read and write it.
 func _build_tiles(level: Level) -> void:
 	_tile_boxes.clear()
+	var salmon := Color.html(InstructionDef.COLOR_MEMORY)
 	for i in level.memory_size:
 		var tile := Panel.new()
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.95, 0.93, 0.82, 0.08)
-		style.border_color = Color.html(VisualTheme.PAPER)
-		style.set_border_width_all(3)
+		style.bg_color = Color(salmon.r, salmon.g, salmon.b, 0.14)
+		style.border_color = salmon
+		# Draw the border outward so the salmon slot frame still rings a box on it.
+		style.set_border_width_all(VisualTheme.TILE_BORDER_WIDTH)
+		style.set_expand_margin_all(VisualTheme.TILE_BORDER_EXPAND)
 		tile.add_theme_stylebox_override("panel", style)
 		tile.size = VisualTheme.TILE_SIZE
 		tile.position = _tile_centers[i] - VisualTheme.TILE_SIZE * 0.5
@@ -191,20 +207,32 @@ func _build_tiles(level: Level) -> void:
 		var idx := Label.new()
 		idx.text = str(i)
 		idx.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		idx.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
-		idx.set_meta("base_font_size", 18)
-		VisualTheme.apply_font_size(idx, 18, 6, 120)
-		idx.size = Vector2(CELL, 24)
-		idx.position = _tile_centers[i] - Vector2(CELL * 0.5, CELL * 0.5 + 24)
+		idx.add_theme_color_override("font_color", salmon)
+		idx.set_meta("base_font_size", TILE_INDEX_FONT_SIZE)
+		VisualTheme.apply_font_size(idx, TILE_INDEX_FONT_SIZE, 6, 140)
+		idx.size = Vector2(CELL, TILE_INDEX_HEIGHT)
+		# Lift the index clear of the tile so there is visible space between them.
+		idx.position = _tile_centers[i] - Vector2(CELL * 0.5, CELL * 0.5 + TILE_INDEX_HEIGHT + TILE_INDEX_GAP)
 		idx.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_content_root.add_child(idx)
 
 		_tile_boxes.append(null)
 
+## Paint a box in the orange memory palette. Called whenever a box comes to
+## rest on a memory tile so a stored value always reads as "in memory",
+## distinct from a carried / inbox box (green) or an outbox box.
+func _paint_memory_box(box: NumberBox) -> void:
+	box.set_palette(
+		VisualTheme.BOX_MEMORY_FILL,
+		VisualTheme.BOX_MEMORY_BORDER,
+		VisualTheme.BOX_MEMORY_TEXT
+	)
+
 func _spawn_initial_memory(level: Level) -> void:
 	for i in level.memory_size:
 		if level.initial_memory.has(i):
 			var nb := _new_box(level.initial_memory[i], _tile_centers[i])
+			_paint_memory_box(nb)
 			_tile_boxes[i] = nb
 
 func _spawn_inbox(level: Level) -> void:
@@ -342,6 +370,7 @@ func _do_copyto(action: StepAction) -> void:
 		var placed := _new_box(action.memory_value, _carry_global())
 		await _fly_box(placed, center, VisualTheme.PICK_TIME)
 		placed.set_value(action.memory_value)
+		_paint_memory_box(placed)
 		_tile_boxes[action.address] = placed
 		await _pop(placed)
 	elif _tile_boxes[action.address]:
@@ -349,6 +378,7 @@ func _do_copyto(action: StepAction) -> void:
 		await _pop(_tile_boxes[action.address])
 	else:
 		var nb := _new_box(action.memory_value, center)
+		_paint_memory_box(nb)
 		_tile_boxes[action.address] = nb
 		await _pop(nb)
 

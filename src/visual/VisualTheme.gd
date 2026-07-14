@@ -17,15 +17,35 @@ const SUN := "#F0BD36"
 const CORAL := "#E56442"
 const PLUM := "#6D405F"
 
-# --- Number boxes -------------------------------------------------------------
-const BOX_FILL := PAPER
-const BOX_FILL_DARK := "#E4DDBE"
-const BOX_BORDER := INK
-const BOX_TEXT := INK
+# --- Number boxes (I/O green family, to match --fam-io command blocks) --------
+# green-300 fill / green-700 border / green-900 numeral. --fam-io (#7DA33B) is
+# the mid of this ramp (BOX_FILL_DARK); the lighter fill keeps boxes distinct
+# from the green inbox/outbox command blocks sitting beside them.
+const BOX_FILL := "#9FC65A"
+const BOX_FILL_DARK := "#7DA33B"
+const BOX_BORDER := "#5E7C29"
+const BOX_TEXT := "#2C3A12"
 const BOX_SUCCESS_FILL := "#B8D9A6"
 const BOX_SUCCESS_BORDER := "#48683A"
 const BOX_ERROR_FILL := "#E7A8A1"
 const BOX_ERROR_BORDER := "#8B3C35"
+# Memory boxes wear an orange coat once they come to rest on a floor tile — a
+# required cue that the value now lives in memory, unlike a carried / inbox box
+# (green) or an outbox box (success/error). Distinct in hue from the salmon
+# memory-tile frame the orange box sits inside.
+const BOX_MEMORY_FILL := "#F0A83C"
+const BOX_MEMORY_BORDER := "#A0530F"
+const BOX_MEMORY_TEXT := "#3A2306"
+
+# --- Station outlines ---------------------------------------------------------
+# Inbox / outbox chutes and memory tiles are one cell wide, exactly like the
+# number boxes dropped into them, so an inside-drawn border would be hidden the
+# moment a box lands. These widths are paired with an equal expand margin so the
+# border is drawn OUTWARD, framing the box and staying visible when occupied.
+const CHUTE_BORDER_WIDTH := 6
+const CHUTE_BORDER_EXPAND := 6
+const TILE_BORDER_WIDTH := 5
+const TILE_BORDER_EXPAND := 5
 
 # --- Worker (Wilmort-style blocky character) ----------------------------------
 const WORKER_BODY := PAPER
@@ -102,6 +122,21 @@ static func scaled_font_size(value: int, minimum: int = 6, maximum: int = 320) -
 
 static func apply_font_size(control: Control, base_size: int, minimum: int = 6, maximum: int = 320) -> void:
 	control.add_theme_font_size_override("font_size", scaled_font_size(base_size, minimum, maximum))
+
+## Font size with an extra multiplier layered on top of the global UI scale.
+## Used by the instruction-font accessibility option so only the instruction
+## blocks grow while the rest of the UI keeps its size.
+static func apply_font_size_mult(control: Control, base_size: int, mult: float, minimum: int = 6, maximum: int = 320) -> void:
+	control.add_theme_font_size_override("font_size", scaled_int(float(base_size) * mult, minimum, maximum))
+
+## Button variant of apply_font_size_mult: the font and the button's minimum box
+## grow by `mult`, but the horizontal padding is left unscaled so the chip keeps
+## the same padding around its larger text.
+static func apply_button_size_mult(button: Button, base_size: Vector2, base_font_size: int, mult: float, horizontal_padding: float = 32.0) -> void:
+	apply_font_size_mult(button, base_font_size, mult)
+	button.custom_minimum_size = button_min_size(
+		button.text, base_size * mult, int(roundf(float(base_font_size) * mult)), horizontal_padding
+	)
 
 static func apply_ui_font(control: Control, bold: bool = false, italic: bool = false) -> void:
 	var font_path := UI_FONT

@@ -11,6 +11,9 @@ const CUSTOM_CURSOR := "custom_cursor"
 const CURSOR_SIZE := "cursor_size"
 ## User-controlled UI scale, same value the +/- keys adjust.
 const UI_SCALE := "ui_scale"
+## Accessibility multiplier on instruction-block text size (1.0 = default).
+## Blocks grow to fit the larger font while their padding stays the same.
+const INSTRUCTION_FONT_SCALE := "instruction_font_scale"
 ## Room panel width in pixels, set by dragging the room/sidebar split.
 const ROOM_WIDTH := "room_width"
 ## Palette-vs-editor width split within the right-hand sidebar (0..1).
@@ -29,6 +32,7 @@ var values: Dictionary = {
 	CUSTOM_CURSOR: false,
 	CURSOR_SIZE: 1.5,
 	UI_SCALE: 1.0,
+	INSTRUCTION_FONT_SCALE: 1.0,
 	ROOM_WIDTH: 0.0,
 	PALETTE_SIDEBAR_RATIO: 0.0,
 	EDITOR_QUESTION_RATIO: 0.0,

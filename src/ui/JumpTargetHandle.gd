@@ -25,15 +25,19 @@ func _init(p_owner: InstructionBlock) -> void:
 	VisualTheme.set_button_font_color(self, Color.html("#3A3526"))
 	apply_ui_scale()
 	tooltip_text = "Jump target\nClick to cycle, or drag this arrow onto a line.\nWith click-to-pickup on: click to pick up, then click a line."
-	# button_down (not _gui_input) so Button's own click/pressed handling is
-	# left completely alone; the pickup start and the cycle-on-click in
-	# InstructionBlock._build_operand simply both key off click_to_pickup_enabled.
-	button_down.connect(_on_button_down)
+	# button_up (a completed click), not button_down, so the pickup keys off the
+	# release. Starting on press let Godot's native drag-detection — armed
+	# because _get_drag_data is overridden — steal the gesture whenever a Windows
+	# trackpad jittered past the drag threshold mid-click, so the pickup often
+	# failed to start. Button's own click/pressed handling is left untouched; the
+	# pickup start and the cycle-on-click in InstructionBlock._build_operand both
+	# key off click_to_pickup_enabled.
+	button_up.connect(_on_button_up)
 
 func apply_ui_scale() -> void:
-	VisualTheme.apply_button_size(self, Vector2(52, 28), 18, 24.0)
+	VisualTheme.apply_button_size_mult(self, Vector2(52, 28), 18, InstructionBlock.font_scale, 24.0)
 
-func _on_button_down() -> void:
+func _on_button_up() -> void:
 	if not InstructionBlock.click_to_pickup_enabled:
 		return
 	var list := _find_program_list()

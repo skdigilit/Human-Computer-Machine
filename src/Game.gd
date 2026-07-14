@@ -72,6 +72,9 @@ func _ready() -> void:
 	_settings.settings_path = _settings_path
 	_settings.load_from_disk()
 	VisualTheme.user_ui_scale = _settings.get_number(HCMSettingsScript.UI_SCALE)
+	# Set before any instruction blocks are built so the first palette / program
+	# render already honours the saved accessibility font size.
+	InstructionBlock.font_scale = _settings.get_number(HCMSettingsScript.INSTRUCTION_FONT_SCALE, 1.0)
 	_levels = LevelLibrary.all_levels()
 	_level_index = clampi(
 		_settings.get_int(HCMSettingsScript.CURRENT_LEVEL_INDEX),
@@ -698,8 +701,10 @@ func _on_settings_confirmed(settings: Dictionary) -> void:
 		VisualTheme.USER_UI_SCALE_MIN,
 		VisualTheme.USER_UI_SCALE_MAX
 	)
-	_apply_ui_scale()
+	# Apply settings first so InstructionBlock.font_scale is set before
+	# _apply_ui_scale rebuilds the palette and program blocks with it.
 	_apply_settings()
+	_apply_ui_scale()
 
 ## Persists the UI scale after it was changed via the +/- keyboard shortcuts.
 func _save_ui_scale_setting() -> void:
@@ -725,6 +730,7 @@ func _apply_settings() -> void:
 		_briefing.set_hint_button_visible(_settings.is_enabled(HCMSettingsScript.SHOW_HINT_BUTTON))
 	if _room and _level:
 		_room.set_show_expected_outbox_boxes(_settings.is_enabled(HCMSettingsScript.SHOW_OUTBOX_EXPECTED_BOXES), _level)
+	InstructionBlock.font_scale = _settings.get_number(HCMSettingsScript.INSTRUCTION_FONT_SCALE, 1.0)
 	InstructionBlock.click_to_pickup_enabled = _settings.is_enabled(HCMSettingsScript.CLICK_TO_PICKUP_INSTRUCTION_BOX)
 	SoftwareCursor.set_size_scale(_settings.get_number(HCMSettingsScript.CURSOR_SIZE))
 	_apply_custom_cursor(_settings.is_enabled(HCMSettingsScript.CUSTOM_CURSOR))

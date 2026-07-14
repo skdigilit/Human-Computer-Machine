@@ -11,6 +11,10 @@ const TAB_DATA := "data"
 const TAB_PLAYER := "player"
 ## Granularity of the cursor-size slider (multiplier steps).
 const CURSOR_SIZE_STEP := 0.25
+## Instruction-font-size slider bounds and granularity (multiplier).
+const INSTRUCTION_FONT_MIN := 1.0
+const INSTRUCTION_FONT_MAX := 2.0
+const INSTRUCTION_FONT_STEP := 0.1
 const HCMSettingsScript := preload("res://src/ui/HCMSettings.gd")
 
 var _settings: Dictionary = {}
@@ -165,6 +169,8 @@ func _add_accessibility_options() -> void:
 	_add_toggle(HCMSettingsScript.CUSTOM_CURSOR, "Custom cursor")
 	_add_slider(HCMSettingsScript.CURSOR_SIZE, "Cursor size",
 			SoftwareCursor.MIN_SIZE_SCALE, SoftwareCursor.MAX_SIZE_SCALE, CURSOR_SIZE_STEP)
+	_add_slider(HCMSettingsScript.INSTRUCTION_FONT_SCALE, "Instruction font size",
+			INSTRUCTION_FONT_MIN, INSTRUCTION_FONT_MAX, INSTRUCTION_FONT_STEP)
 
 func _add_empty_section(title_text: String) -> void:
 	var row := PanelContainer.new()

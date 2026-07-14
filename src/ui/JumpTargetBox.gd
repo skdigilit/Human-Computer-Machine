@@ -4,6 +4,12 @@ extends Button
 ## Draggable dummy instruction showing where a jump lands.
 
 var owner_block: InstructionBlock
+## Left-press bookkeeping so a pickup starts on a clean click (press then
+## release without travelling), not on the raw press — the raw press lets
+## Godot's native drag-detection steal the gesture on jittery trackpads. See
+## InstructionBlock._gui_input for the full rationale.
+var _pickup_press_active: bool = false
+var _pickup_press_pos: Vector2 = Vector2.ZERO
 
 func _init(p_owner: InstructionBlock) -> void:
 	owner_block = p_owner
@@ -27,13 +33,24 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
-		if button.button_index == MOUSE_BUTTON_LEFT and button.pressed:
-			var list := _find_program_list()
-			if list == null:
-				return
-			list._begin_jump_drag(owner_block, self)
-			InstructionBlock.start_generic_click_pickup(drag_payload(), _make_preview(), self, null, list)
+		if button.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if button.pressed:
+			_pickup_press_active = true
+			_pickup_press_pos = button.position
 			accept_event()
+		elif _pickup_press_active:
+			_pickup_press_active = false
+			if button.position.distance_to(_pickup_press_pos) <= InstructionBlock.CLICK_MOVE_TOLERANCE:
+				_start_pickup()
+			accept_event()
+
+func _start_pickup() -> void:
+	var list := _find_program_list()
+	if list == null:
+		return
+	list._begin_jump_drag(owner_block, self)
+	InstructionBlock.start_generic_click_pickup(drag_payload(), _make_preview(), self, null, list)
 
 func drag_payload() -> Dictionary:
 	return {
