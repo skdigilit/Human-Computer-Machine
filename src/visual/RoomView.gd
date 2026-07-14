@@ -402,6 +402,11 @@ func _walk_near(target_center: Vector2, offset: Vector2) -> void:
 
 ## Fly a stage-space box into the worker's hands, then snap it as a child.
 func _fly_to_hand(box: NumberBox) -> void:
+	# COPYTO leaves its source box in hand. A later pickup replaces that value,
+	# so remove the old visual before assigning the newly picked box.
+	if worker.held_box != null and worker.held_box != box:
+		_discard(worker.held_box)
+		worker.held_box = null
 	await _fly_box(box, _carry_global(), VisualTheme.PICK_TIME)
 	_stage.remove_child(box)
 	worker.add_child(box)

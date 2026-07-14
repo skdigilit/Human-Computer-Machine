@@ -226,7 +226,11 @@ func _layout_panels(viewport_size: Vector2) -> void:
 	var editor_width: float = widths[2]
 
 	var editor_stack_height := maxf(1.0, top_height - gap)
-	var briefing_height := editor_stack_height * _clamped_editor_question_ratio(editor_stack_height)
+	var briefing_height := (
+		minf(editor_stack_height, _briefing.collapsed_height())
+		if _briefing.is_collapsed()
+		else editor_stack_height * _clamped_editor_question_ratio(editor_stack_height)
+	)
 	var program_height := editor_stack_height - briefing_height
 
 	_room.position = Vector2(gap, gap)
@@ -375,7 +379,7 @@ func _resize_edge_at(mouse_position: Vector2, modifier_pressed: bool) -> int:
 	if not modifier_pressed:
 		return RESIZE_NONE
 	var edge := _resize_edge_thickness()
-	if _horizontal_edge_hit(_briefing, mouse_position, true, edge) or _horizontal_edge_hit(_program_list, mouse_position, false, edge):
+	if not _briefing.is_collapsed() and (_horizontal_edge_hit(_briefing, mouse_position, true, edge) or _horizontal_edge_hit(_program_list, mouse_position, false, edge)):
 		return RESIZE_EDITOR_SPLIT
 	if _vertical_edge_hit(_palette, mouse_position, false, edge):
 		return RESIZE_ROOM_SPLIT
@@ -476,8 +480,12 @@ func _wire_signals() -> void:
 	_program_list.add_page_requested.connect(_on_add_page_requested)
 	_briefing.previous_requested.connect(func() -> void: _select_level(_level_index - 1))
 	_briefing.next_requested.connect(func() -> void: _select_level(_level_index + 1))
+	_briefing.collapsed_changed.connect(_on_briefing_collapsed_changed)
 	_settings_overlay.close_requested.connect(_close_settings)
 	_settings_overlay.settings_confirmed.connect(_on_settings_confirmed)
+
+func _on_briefing_collapsed_changed(_collapsed: bool) -> void:
+	_layout_panels(get_viewport_rect().size)
 
 # --- Level / run lifecycle ----------------------------------------------------
 
