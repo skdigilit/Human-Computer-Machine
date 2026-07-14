@@ -175,9 +175,9 @@ func _build_chute(center_x: float, label_text: String, frame_color: Color) -> vo
 	sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sign.set_meta("base_font_size", 23)
 	VisualTheme.apply_font_size(sign, 23, 6, 160)
-	sign.add_theme_color_override("font_color", Color.html(VisualTheme.INK))
-	sign.add_theme_color_override("font_outline_color", Color.html(VisualTheme.PAPER))
-	sign.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 24))
+	# The station label shares its chute's command-family colour. Keep it clean
+	# and flat so the label does not compete with the coloured chute border.
+	sign.add_theme_color_override("font_color", frame_color)
 	sign.size = Vector2(CELL * 2, CELL)
 	sign.position = Vector2(center_x - sign.size.x * 0.5, _chute_top - CELL)
 	sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -539,8 +539,6 @@ func _apply_ui_scale_recursive(node: Node) -> void:
 	if node is Label and node.has_meta("base_font_size"):
 		var label := node as Label
 		VisualTheme.apply_font_size(label, int(label.get_meta("base_font_size")), 6, 184)
-		if label.text == INBOX_LABEL or label.text == OUTBOX_LABEL:
-			label.add_theme_constant_override("outline_size", VisualTheme.scaled_int(8, 2, 24))
 	elif node is NumberBox:
 		(node as NumberBox).apply_ui_scale()
 	for child in node.get_children():

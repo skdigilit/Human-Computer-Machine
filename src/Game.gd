@@ -24,6 +24,7 @@ const MIN_BRIEFING_HEIGHT := 220.0
 const MIN_PROGRAM_HEIGHT := 260.0
 const MAX_PROGRAM_PAGES := 3
 const DEFAULT_SAVE_PATH := "user://instruction_pages.json"
+const WINDOWS_WINDOW_SIZE := Vector2i(1280, 1080)
 const RESIZE_EDGE_THICKNESS := 10.0
 const RESIZE_NONE := 0
 const RESIZE_PALETTE_SPLIT := 1
@@ -65,6 +66,8 @@ var _manual_step_loop_active: bool = false
 var _delay: float = 0.4
 
 func _ready() -> void:
+	if OS.get_name() == "Windows":
+		get_window().size = WINDOWS_WINDOW_SIZE
 	set_process(true)
 	VisualTheme.set_viewport_size(get_viewport_rect().size)
 	theme = VisualTheme.make_ui_theme()
