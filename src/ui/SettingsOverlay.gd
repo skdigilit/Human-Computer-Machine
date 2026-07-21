@@ -5,6 +5,8 @@ signal close_requested()
 ## Emitted once when the overlay closes, carrying every setting the user
 ## may have changed while it was open (settings are not applied live).
 signal settings_confirmed(settings: Dictionary)
+## Requests that the active instruction workspace page be cleared.
+signal clear_current_page_requested()
 
 const TAB_ACCESSIBILITY := "accessibility"
 const TAB_DATA := "data"
@@ -158,7 +160,7 @@ func _refresh_content() -> void:
 		TAB_ACCESSIBILITY:
 			_add_accessibility_options()
 		TAB_DATA:
-			_add_empty_section("Data")
+			_add_data_options()
 		TAB_PLAYER:
 			_add_empty_section("Player")
 
@@ -171,6 +173,41 @@ func _add_accessibility_options() -> void:
 			SoftwareCursor.MIN_SIZE_SCALE, SoftwareCursor.MAX_SIZE_SCALE, CURSOR_SIZE_STEP)
 	_add_slider(HCMSettingsScript.INSTRUCTION_FONT_SCALE, "Instruction font size",
 			INSTRUCTION_FONT_MIN, INSTRUCTION_FONT_MAX, INSTRUCTION_FONT_STEP)
+
+func _add_data_options() -> void:
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", _row_style())
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content.add_child(row)
+
+	var margin := MarginContainer.new()
+	for side in ["left", "right"]:
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(14, 6, 32))
+	for side in ["top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(10, 5, 28))
+	row.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", VisualTheme.scaled_int(10, 5, 24))
+	margin.add_child(content)
+
+	var title := Label.new()
+	title.text = "Instruction workspace"
+	title.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
+	VisualTheme.apply_font_size(title, 22, 12, 60)
+	content.add_child(title)
+
+	var description := Label.new()
+	description.text = "Remove all placed instructions from the current page."
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
+	VisualTheme.apply_font_size(description, 16, 9, 42)
+	content.add_child(description)
+
+	var clear_button := _make_button("Clear current page")
+	clear_button.tooltip_text = "Remove every instruction from the current page"
+	clear_button.pressed.connect(func() -> void: clear_current_page_requested.emit())
+	content.add_child(clear_button)
 
 func _add_empty_section(title_text: String) -> void:
 	var row := PanelContainer.new()

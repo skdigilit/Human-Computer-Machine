@@ -489,6 +489,7 @@ func _wire_signals() -> void:
 	_briefing.collapsed_changed.connect(_on_briefing_collapsed_changed)
 	_settings_overlay.close_requested.connect(_close_settings)
 	_settings_overlay.settings_confirmed.connect(_on_settings_confirmed)
+	_settings_overlay.clear_current_page_requested.connect(_on_clear_current_page_requested)
 
 func _on_briefing_collapsed_changed(_collapsed: bool) -> void:
 	_layout_panels(get_viewport_rect().size)
@@ -561,6 +562,20 @@ func _on_add_page_requested() -> void:
 	_program_list.setup(_program, _level.memory_size, _active_page, _program_pages.size())
 	_reset_run()
 
+## Clear only the currently visible program-editor page. Its prior contents are
+## retained in the save record before the empty page is written, so clearing a
+## page never destroys persisted player data.
+func _on_clear_current_page_requested() -> void:
+	if _program == null or _program.size() == 0:
+		return
+	_archive_current_page_before_clear()
+	_program.clear()
+	_program_list.clear_drop_preview()
+	_program_list.rebuild()
+	_save_current_level()
+	_reset_run()
+	_control_bar.set_status("Current instruction page cleared.")
+
 # --- Instruction page persistence --------------------------------------------
 
 func _level_save_key() -> String:
@@ -592,20 +607,37 @@ func _load_level_pages() -> void:
 		_program_pages.append(Program.new())
 	_program = _program_pages[_active_page]
 
+## Append a lossless snapshot before clearing a page. These snapshots are kept
+## as save metadata and intentionally ignored when loading the active program.
+func _archive_current_page_before_clear() -> void:
+	var existing: Variant = _saved_levels.get(_level_save_key(), {})
+	var level_record: Dictionary = existing.duplicate(true) if existing is Dictionary else {}
+	var stored_archives: Variant = level_record.get("cleared_pages", [])
+	var cleared_pages: Array = stored_archives.duplicate(true) if stored_archives is Array else []
+	cleared_pages.append({
+		"page_index": _active_page,
+		"instructions": _program.to_data(),
+	})
+	level_record["cleared_pages"] = cleared_pages
+	_saved_levels[_level_save_key()] = level_record
+
 func _save_current_level() -> void:
 	var pages: Array = []
 	for page in _program_pages:
 		pages.append(page.to_data())
-	_saved_levels[_level_save_key()] = {
+	var existing: Variant = _saved_levels.get(_level_save_key(), {})
+	var level_record: Dictionary = existing.duplicate(true) if existing is Dictionary else {}
+	level_record.merge({
 		"active_page": _active_page,
 		"pages": pages,
-	}
+	}, true)
+	_saved_levels[_level_save_key()] = level_record
 	var file := FileAccess.open(_save_path, FileAccess.WRITE)
 	if file == null:
 		push_warning("Could not save instruction pages.")
 		return
 	file.store_string(JSON.stringify({
-		"version": 1,
+		"version": 2,
 		"levels": _saved_levels,
 	}, "\t"))
 

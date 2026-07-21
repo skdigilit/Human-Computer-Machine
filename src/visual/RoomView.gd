@@ -11,6 +11,7 @@ extends Control
 # --- Layout cells -------------------------------------------------------------
 const CELL := VisualTheme.CELL_SIZE
 const CHUTE_TOP_ROW := 3
+const MIN_CHUTE_SLOTS := 7
 const WORKER_HOME_CELL := Vector2(6.5, 5.5)
 const MANUAL_STEP_SPEED_SCALE := 4.0
 const INBOX_LABEL := "INBOX"
@@ -96,8 +97,18 @@ func setup(level: Level) -> void:
 	_ensure_content_root()
 	_compute_layout(level)
 	_build_floor()
-	_build_chute(_inbox_x, INBOX_LABEL, Color.html(InstructionDef.COLOR_IO))
-	_build_chute(_outbox_x, OUTBOX_LABEL, Color.html(InstructionDef.COLOR_OUTBOX))
+	_build_chute(
+		_inbox_x,
+		INBOX_LABEL,
+		Color.html(InstructionDef.COLOR_IO),
+		maxi(MIN_CHUTE_SLOTS, level.inbox.size())
+	)
+	_build_chute(
+		_outbox_x,
+		OUTBOX_LABEL,
+		Color.html(InstructionDef.COLOR_OUTBOX),
+		maxi(MIN_CHUTE_SLOTS, level.expected_outbox.size())
+	)
 	_build_tiles(level)
 	_expected_outbox_values = level.expected_outbox.duplicate()
 
@@ -148,7 +159,7 @@ func _build_floor() -> void:
 ## in `frame_color` — the green inbox family for the inbox, the teal outbox
 ## family for the outbox — so each station visibly belongs to the command that
 ## feeds it.
-func _build_chute(center_x: float, label_text: String, frame_color: Color) -> void:
+func _build_chute(center_x: float, label_text: String, frame_color: Color, slot_count: int) -> void:
 	var frame := Panel.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color.html(VisualTheme.ROOM_FLOOR_DARK)
@@ -157,12 +168,12 @@ func _build_chute(center_x: float, label_text: String, frame_color: Color) -> vo
 	style.set_border_width_all(VisualTheme.CHUTE_BORDER_WIDTH)
 	style.set_expand_margin_all(VisualTheme.CHUTE_BORDER_EXPAND)
 	frame.add_theme_stylebox_override("panel", style)
-	frame.size = Vector2(CELL, CELL * 7)
+	frame.size = Vector2(CELL, CELL * slot_count)
 	frame.position = Vector2(center_x - CELL * 0.5, _chute_top)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_content_root.add_child(frame)
 
-	for row in range(1, 7):
+	for row in range(1, slot_count):
 		var divider := ColorRect.new()
 		divider.color = frame_color
 		divider.position = Vector2(0, row * CELL - 2)

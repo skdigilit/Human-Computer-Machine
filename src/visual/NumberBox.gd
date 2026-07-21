@@ -3,6 +3,11 @@ extends Control
 
 ## A flat square number piece occupying one warehouse grid cell.
 
+const BASE_FONT_SIZE := 32
+const MIN_FONT_SIZE := 8
+const MAX_FONT_SIZE := 184
+const TEXT_HORIZONTAL_PADDING := 10.0
+
 var value: int = 0
 
 var _panel: Panel
@@ -31,14 +36,13 @@ func _ready() -> void:
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.add_theme_color_override("font_color", Color.html(_text_hex))
-	VisualTheme.apply_font_size(_label, 32, 8, 184)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
 	_refresh()
 
 func apply_ui_scale() -> void:
 	if is_instance_valid(_label):
-		VisualTheme.apply_font_size(_label, 32, 8, 184)
+		_fit_label_font_size()
 
 ## Change the displayed value (e.g. after add/sub/bump).
 func set_value(p_value: int) -> void:
@@ -57,6 +61,19 @@ func set_palette(fill_hex: String, border_hex: String, text_hex: String = Visual
 
 func _refresh() -> void:
 	_label.text = str(value)
+	_fit_label_font_size()
+
+## Keep the box on the fixed warehouse grid while reducing only numerals that
+## would otherwise extend through its border (for example, negative values
+## with two or more digits).
+func _fit_label_font_size() -> void:
+	var font_size := VisualTheme.scaled_font_size(BASE_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE)
+	var font := _label.get_theme_font("font")
+	var available_width := maxf(1.0, size.x - TEXT_HORIZONTAL_PADDING * 2.0)
+	var text_width := font.get_string_size(_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	if text_width > available_width:
+		font_size = maxi(MIN_FONT_SIZE, floori(float(font_size) * available_width / text_width))
+	_label.add_theme_font_size_override("font_size", font_size)
 
 ## Centre this box on a target point in its parent's coordinate space.
 func place_centered(center: Vector2) -> void:
