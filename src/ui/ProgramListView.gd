@@ -27,6 +27,7 @@ var memory_size: int = 0
 var _scroll: ScrollContainer
 var _list: VBoxContainer
 var _blocks: Array[InstructionBlock] = []
+var _hovered_block: InstructionBlock = null
 var _active_index: int = -1
 var _jump_underlay: Control
 var _page_header: HBoxContainer
@@ -233,6 +234,7 @@ func rebuild() -> void:
 	for child in _list.get_children():
 		child.queue_free()
 	_blocks.clear()
+	_hovered_block = null
 	_target_boxes.clear()
 	_candidate_block = null
 
@@ -307,9 +309,18 @@ func _make_row(index: int, inst: Instruction) -> Control:
 	block.set_memory_size(memory_size)
 	block.request_target_pick.connect(_on_cycle_target)
 	block.instruction_changed.connect(func() -> void: program_changed.emit())
+	block.mouse_entered.connect(_on_block_mouse_entered.bind(block))
+	block.mouse_exited.connect(_on_block_mouse_exited.bind(block))
 	row.add_child(block)
 	_blocks.append(block)
 	return row
+
+func _on_block_mouse_entered(block: InstructionBlock) -> void:
+	_hovered_block = block
+
+func _on_block_mouse_exited(block: InstructionBlock) -> void:
+	if _hovered_block == block:
+		_hovered_block = null
 
 # --- Jump targets -------------------------------------------------------------
 
@@ -343,6 +354,35 @@ func set_active_line(index: int) -> void:
 	if index >= 0 and index < _blocks.size():
 		_blocks[index].set_active(true)
 		_ensure_visible(_blocks[index])
+
+## Delete the instruction block currently under the pointer. Returns true only
+## when a program line was removed, allowing the caller to consume the shortcut.
+func delete_hovered_instruction() -> bool:
+	if program == null or InstructionBlock.has_active_click_pickup() or get_viewport().gui_is_dragging():
+		return false
+	var block := _hovered_program_block()
+	if block == null:
+		return false
+	var index := program.index_of_id(block.instruction.id)
+	if index == -1:
+		return false
+	set_active_line(-1)
+	program.remove_at(index)
+	rebuild()
+	program_changed.emit()
+	return true
+
+## Resolve child controls such as address and jump-target buttons back to the
+## program block they belong to, then fall back to the block hover signals.
+func _hovered_program_block() -> InstructionBlock:
+	var hovered: Node = get_viewport().gui_get_hovered_control()
+	while hovered != null and not hovered is InstructionBlock:
+		hovered = hovered.get_parent()
+	if hovered is InstructionBlock and _blocks.has(hovered):
+		return hovered as InstructionBlock
+	if _hovered_block != null and is_instance_valid(_hovered_block):
+		return _hovered_block
+	return null
 
 ## Scroll so a block is within the viewport (follows execution).
 func _ensure_visible(block: InstructionBlock) -> void:

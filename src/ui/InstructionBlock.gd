@@ -51,6 +51,7 @@ static var _drag_target_valid: bool = true
 static var _click_drag_data: Dictionary = {}
 static var _click_drag_preview: Control = null
 static var _click_drag_source: InstructionBlock = null
+static var _hovered_instruction_block: InstructionBlock = null
 ## Set only for a jump-target pickup, so its rubber-band aim line can be
 ## cleared from the list it started on once the pickup ends.
 static var _jump_pickup_list: ProgramListView = null
@@ -84,6 +85,8 @@ func _init(p_op: InstructionDef.Op, p_is_palette: bool, p_instruction: Instructi
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 func _ready() -> void:
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
 	_apply_style()
 	custom_minimum_size = VisualTheme.scaled_size(Vector2(150, 0), Vector2(80, 0), Vector2(900, 0))
 	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -108,6 +111,13 @@ func _ready() -> void:
 
 	if not is_palette:
 		_build_operand(row)
+
+func _on_mouse_entered() -> void:
+	InstructionBlock._hovered_instruction_block = self
+
+func _on_mouse_exited() -> void:
+	if InstructionBlock._hovered_instruction_block == self:
+		InstructionBlock._hovered_instruction_block = null
 
 ## Add the family glyph and command word to `row` as two labels — the glyph a
 ## little larger and sized relative to the word — respecting outbox's trailing
@@ -350,6 +360,41 @@ static func configure_custom_cursor(enabled: bool) -> void:
 
 static func has_active_click_pickup() -> bool:
 	return _click_drag_preview != null
+
+## Space-bar counterpart to click-to-pickup: pick up the hovered instruction,
+## or immediately drop the instruction already in hand at `global_point`.
+static func toggle_keyboard_pickup(global_point: Vector2, root: Node) -> bool:
+	if root.get_viewport().gui_is_dragging():
+		return false
+	if has_active_click_pickup():
+		var dropped := _drop_click_pickup(global_point, root)
+		if not dropped:
+			_delete_click_pickup_if_reorder()
+		_end_click_pickup()
+		return true
+	var hovered := _instruction_block_under_pointer(root.get_viewport())
+	if hovered == null:
+		return false
+	hovered._start_click_pickup()
+	update_click_pickup(global_point, root)
+	return has_active_click_pickup()
+
+## Resolve hovered operand controls back to their owning instruction block.
+## The signal-tracked fallback also covers platforms that have not refreshed
+## Viewport.gui_get_hovered_control when the keyboard event arrives.
+static func _instruction_block_under_pointer(viewport: Viewport) -> InstructionBlock:
+	var hovered: Node = viewport.gui_get_hovered_control()
+	while hovered != null and not hovered is InstructionBlock:
+		hovered = hovered.get_parent()
+	if hovered is InstructionBlock:
+		return hovered as InstructionBlock
+	if (
+		_hovered_instruction_block != null
+		and is_instance_valid(_hovered_instruction_block)
+		and not _hovered_instruction_block.is_queued_for_deletion()
+	):
+		return _hovered_instruction_block
+	return null
 
 static func update_click_pickup(mouse_position: Vector2, root: Node) -> void:
 	if _click_drag_preview == null or not is_instance_valid(_click_drag_preview):

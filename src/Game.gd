@@ -125,6 +125,10 @@ func _process(_delta: float) -> void:
 		InstructionBlock.update_native_drag_cursor(get_viewport().get_mouse_position(), self)
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_last_pointer_position = (event as InputEventMouseMotion).position
+	elif event is InputEventMouseButton:
+		_last_pointer_position = (event as InputEventMouseButton).position
 	if _settings_overlay != null and _settings_overlay.visible:
 		if event is InputEventKey:
 			var overlay_key := event as InputEventKey
@@ -148,7 +152,10 @@ func _input(event: InputEvent) -> void:
 		var key := event as InputEventKey
 		if not key.pressed or key.echo:
 			return
-		if _is_scale_up_key(key):
+		if _is_toggle_instruction_pickup_key(key):
+			if InstructionBlock.toggle_keyboard_pickup(_last_pointer_position, self):
+				accept_event()
+		elif _is_scale_up_key(key):
 			if VisualTheme.adjust_user_ui_scale(1):
 				_apply_ui_scale()
 				_save_ui_scale_setting()
@@ -161,6 +168,9 @@ func _input(event: InputEvent) -> void:
 		elif _is_show_hint_key(key):
 			_briefing.show_hint()
 			accept_event()
+		elif _is_delete_hovered_instruction_key(key):
+			if _program_list.delete_hovered_instruction():
+				accept_event()
 
 # --- Construction -------------------------------------------------------------
 
@@ -346,6 +356,23 @@ func _is_scale_down_key(key: InputEventKey) -> bool:
 
 func _is_show_hint_key(key: InputEventKey) -> bool:
 	return key.shift_pressed and _matches_key(key, [KEY_H])
+
+func _is_toggle_instruction_pickup_key(key: InputEventKey) -> bool:
+	return (
+		not key.shift_pressed
+		and not key.ctrl_pressed
+		and not key.alt_pressed
+		and not key.meta_pressed
+		and _matches_key(key, [KEY_SPACE])
+	)
+
+func _is_delete_hovered_instruction_key(key: InputEventKey) -> bool:
+	return (
+		not key.ctrl_pressed
+		and not key.alt_pressed
+		and not key.meta_pressed
+		and _matches_key(key, [KEY_X])
+	)
 
 func _matches_key(key: InputEventKey, codes: Array[int]) -> bool:
 	for code in codes:
