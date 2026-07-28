@@ -10,7 +10,9 @@ func _run() -> void:
 	VisualTheme.set_viewport_size(Vector2(1900, 1400))
 
 	var game: Game = load("res://game_main.tscn").instantiate()
-	game._save_path = "user://ui_scale_test_%d.json" % Time.get_ticks_usec()
+	var run_id := Time.get_ticks_usec()
+	game._save_path = "user://ui_scale_test_%d.json" % run_id
+	game._settings_path = "user://ui_scale_settings_test_%d.json" % run_id
 	root.add_child(game)
 	for i in 4:
 		await process_frame
