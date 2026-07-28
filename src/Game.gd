@@ -64,10 +64,14 @@ var _halted: bool = false
 var _step_buffered: bool = false
 var _manual_step_loop_active: bool = false
 var _delay: float = 0.4
+var _last_pointer_position: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
-	if OS.get_name() == "Windows":
-		get_window().size = WINDOWS_WINDOW_SIZE
+	_last_pointer_position = get_viewport().get_mouse_position()
+	if OS.has_feature("windows"):
+		var window := get_window()
+		window.content_scale_size = WINDOWS_WINDOW_SIZE
+		window.size = WINDOWS_WINDOW_SIZE
 	set_process(true)
 	VisualTheme.set_viewport_size(get_viewport_rect().size)
 	theme = VisualTheme.make_ui_theme()
