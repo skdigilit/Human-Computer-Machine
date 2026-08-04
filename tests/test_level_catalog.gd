@@ -50,6 +50,7 @@ func _init() -> void:
 		passed = passed and not level.briefing.is_empty()
 		passed = passed and not level.inbox.is_empty()
 		passed = passed and not level.expected_outbox.is_empty()
+		passed = passed and level.test_case_count() >= 2
 		passed = passed and not level.palette.is_empty()
 
 	for title in EXPECTED_NEW_TITLES:

@@ -1,6 +1,8 @@
 class_name RoomView
 extends Control
 
+signal test_case_swap_requested()
+
 ## The office floor. Lays out the INBOX chute (left), the memory tiles (centre),
 ## the OUTBOX chute (right) and the worker, then animates each VM StepAction by
 ## walking the worker to the relevant station and snapping number boxes around.
@@ -16,6 +18,9 @@ const WORKER_HOME_CELL := Vector2(6.5, 5.5)
 const MANUAL_STEP_SPEED_SCALE := 4.0
 const INBOX_LABEL := "INBOX"
 const OUTBOX_LABEL := "OUTBOX"
+const SWAP_BUTTON_TEXT := "SWAP"
+const SWAP_BUTTON_SIZE := Vector2(112.0, 46.0)
+const SWAP_BUTTON_GAP := 14.0
 ## Memory-tile index labels: font size, label height, and the gap lifting them
 ## clear above their tile.
 const TILE_INDEX_FONT_SIZE := 22
@@ -23,6 +28,7 @@ const TILE_INDEX_HEIGHT := 28
 const TILE_INDEX_GAP := 12
 
 var _content_root: Control
+var _test_case_swap_button: Button
 var _virtual_size: Vector2 = Vector2(1152, 900)
 var _content_scale: float = 1.0
 var _content_offset: Vector2 = Vector2.ZERO
@@ -103,6 +109,7 @@ func setup(level: Level) -> void:
 		Color.html(InstructionDef.COLOR_IO),
 		maxi(MIN_CHUTE_SLOTS, level.inbox.size())
 	)
+	_build_test_case_swap_button(level)
 	_build_chute(
 		_outbox_x,
 		OUTBOX_LABEL,
@@ -193,6 +200,34 @@ func _build_chute(center_x: float, label_text: String, frame_color: Color, slot_
 	sign.position = Vector2(center_x - sign.size.x * 0.5, _chute_top - CELL)
 	sign.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_content_root.add_child(sign)
+
+## Cycle to another valid inbox/outbox pair for this puzzle. Keeping this next
+## to the inbox makes it clear that it changes test data, not the program.
+func _build_test_case_swap_button(level: Level) -> void:
+	if level.test_case_count() <= 1:
+		return
+	var button := Button.new()
+	_test_case_swap_button = button
+	button.text = SWAP_BUTTON_TEXT
+	button.tooltip_text = "Try this program with another inbox and outbox set"
+	button.size = SWAP_BUTTON_SIZE
+	button.position = Vector2(
+		_inbox_x - button.size.x * 0.5,
+		_chute_top + CELL * maxi(MIN_CHUTE_SLOTS, level.inbox.size()) + SWAP_BUTTON_GAP
+	)
+	button.set_meta("base_font_size", 18)
+	VisualTheme.apply_font_size(button, 18, 10, 36)
+	var normal := VisualTheme.make_box_style(InstructionDef.COLOR_IO, VisualTheme.BOX_BORDER)
+	var hover := VisualTheme.make_box_style(
+		Color.html(InstructionDef.COLOR_IO).lightened(0.12).to_html(false),
+		VisualTheme.BOX_BORDER
+	)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", normal)
+	VisualTheme.set_button_font_color(button, Color.html(VisualTheme.PAPER))
+	button.pressed.connect(func() -> void: test_case_swap_requested.emit())
+	_content_root.add_child(button)
 
 ## Empty memory cells with their index shown above the tile, clear of any box
 ## placed inside. Tiles are tinted with the memory family salmon
@@ -515,6 +550,7 @@ func _clear_children() -> void:
 	for child in get_children():
 		child.queue_free()
 	_content_root = null
+	_test_case_swap_button = null
 	_stage = null
 	worker = null
 	_inbox_boxes.clear()
@@ -547,9 +583,9 @@ func _update_content_transform() -> void:
 		_content_root.size = _virtual_size
 
 func _apply_ui_scale_recursive(node: Node) -> void:
-	if node is Label and node.has_meta("base_font_size"):
-		var label := node as Label
-		VisualTheme.apply_font_size(label, int(label.get_meta("base_font_size")), 6, 184)
+	if node is Control and node.has_meta("base_font_size"):
+		var control := node as Control
+		VisualTheme.apply_font_size(control, int(control.get_meta("base_font_size")), 6, 184)
 	elif node is NumberBox:
 		(node as NumberBox).apply_ui_scale()
 	for child in node.get_children():

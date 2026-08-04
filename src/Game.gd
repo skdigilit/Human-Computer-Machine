@@ -518,6 +518,7 @@ func _wire_signals() -> void:
 	_briefing.previous_requested.connect(func() -> void: _select_level(_level_index - 1))
 	_briefing.next_requested.connect(func() -> void: _select_level(_level_index + 1))
 	_briefing.collapsed_changed.connect(_on_briefing_collapsed_changed)
+	_room.test_case_swap_requested.connect(_on_test_case_swap_requested)
 	_settings_overlay.close_requested.connect(_close_settings)
 	_settings_overlay.settings_confirmed.connect(_on_settings_confirmed)
 	_settings_overlay.clear_current_page_requested.connect(_on_clear_current_page_requested)
@@ -568,6 +569,17 @@ func _ensure_vm() -> void:
 
 func _on_reset() -> void:
 	_reset_run()
+
+func _on_test_case_swap_requested() -> void:
+	if _busy:
+		_control_bar.set_status("Pause and wait for the current move before swapping tests.")
+		return
+	_level.select_next_test_case()
+	_reset_run()
+	_control_bar.set_status(
+		"Test set %d of %d loaded. Your program is unchanged."
+		% [_level.active_test_case + 1, _level.test_case_count()]
+	)
 
 func _on_program_changed() -> void:
 	# Any edit invalidates a half-run machine; rewind to a clean state.

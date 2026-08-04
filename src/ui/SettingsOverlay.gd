@@ -11,6 +11,26 @@ signal clear_current_page_requested()
 const TAB_ACCESSIBILITY := "accessibility"
 const TAB_DATA := "data"
 const TAB_PLAYER := "player"
+const TAB_HELP := "help"
+const KEYBOARD_SHORTCUTS := [
+	{"input": "Space", "action": "Pick up or place the instruction under the pointer."},
+	{"input": "X", "action": "Delete the hovered instruction from the program."},
+	{"input": "Shift + H", "action": "Show or hide the hint for the current level."},
+	{"input": "+ / Numpad +", "action": "Increase the interface scale."},
+	{"input": "- / Numpad -", "action": "Decrease the interface scale."},
+	{"input": "Esc", "action": "Close Settings and return to the game."},
+]
+const MOUSE_SHORTCUTS := [
+	{"input": "Left click", "action": "Use buttons and controls, including level and instruction-page selectors."},
+	{"input": "Click address", "action": "Cycle the floor tile used by a numbered instruction."},
+	{"input": "Click jump arrow", "action": "With click-to-pickup off, cycle a jump through the available target lines."},
+	{"input": "Drag instruction", "action": "With click-to-pickup off, add an instruction from the palette or reorder a program line."},
+	{"input": "Drop outside", "action": "Delete a program instruction by dropping or placing it outside the program."},
+	{"input": "Drag jump target", "action": "With click-to-pickup off, drop a jump arrow or target box on a line to set its destination."},
+	{"input": "Mouse wheel", "action": "Scroll long problem statements and programs."},
+	{"input": "Ctrl/Cmd + left-drag", "action": "Resize the room, palette, problem, and program panels from a divider."},
+	{"input": "Click, then click", "action": "With click-to-pickup enabled, pick up and place instructions or jump targets without holding the mouse button."},
+]
 ## Granularity of the cursor-size slider (multiplier steps).
 const CURSOR_SIZE_STEP := 0.25
 ## Instruction-font-size slider bounds and granularity (multiplier).
@@ -23,6 +43,7 @@ var _settings: Dictionary = {}
 var _active_tab := TAB_ACCESSIBILITY
 var _panel: PanelContainer
 var _tab_buttons: Dictionary = {}
+var _content_scroll: ScrollContainer
 var _content: VBoxContainer
 var _toggles: Dictionary = {}
 ## key -> HSlider, so _sync_toggles can refresh numeric rows too.
@@ -123,12 +144,20 @@ func _build() -> void:
 	_add_tab_button(tabs, TAB_ACCESSIBILITY, "Accessibility")
 	_add_tab_button(tabs, TAB_DATA, "Data")
 	_add_tab_button(tabs, TAB_PLAYER, "Player")
+	_add_tab_button(tabs, TAB_HELP, "Help")
+
+	_content_scroll = ScrollContainer.new()
+	_content_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_content_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_content_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_child(_content_scroll)
 
 	_content = VBoxContainer.new()
 	_content.add_theme_constant_override("separation", VisualTheme.scaled_int(12, 5, 32))
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body.add_child(_content)
+	_content_scroll.add_child(_content)
 
 	_refresh_tabs()
 	_refresh_content()
@@ -153,6 +182,7 @@ func _refresh_tabs() -> void:
 func _refresh_content() -> void:
 	for child in _content.get_children():
 		child.queue_free()
+	_content_scroll.set_deferred("scroll_vertical", 0)
 	_toggles.clear()
 	_sliders.clear()
 
@@ -163,6 +193,8 @@ func _refresh_content() -> void:
 			_add_data_options()
 		TAB_PLAYER:
 			_add_empty_section("Player")
+		TAB_HELP:
+			_add_help_options()
 
 func _add_accessibility_options() -> void:
 	_add_toggle(HCMSettingsScript.SHOW_HINT_BUTTON, "Show hint button")
@@ -208,6 +240,54 @@ func _add_data_options() -> void:
 	clear_button.tooltip_text = "Remove every instruction from the current page"
 	clear_button.pressed.connect(func() -> void: clear_current_page_requested.emit())
 	content.add_child(clear_button)
+
+func _add_help_options() -> void:
+	_add_shortcut_section("Keyboard", KEYBOARD_SHORTCUTS)
+	_add_shortcut_section("Mouse", MOUSE_SHORTCUTS)
+
+func _add_shortcut_section(title_text: String, shortcuts: Array) -> void:
+	var title := Label.new()
+	title.text = title_text
+	title.add_theme_color_override("font_color", Color.html(VisualTheme.SUN))
+	VisualTheme.apply_font_size(title, 22, 12, 60)
+	_content.add_child(title)
+
+	for shortcut in shortcuts:
+		_add_shortcut_row(str(shortcut["input"]), str(shortcut["action"]))
+
+func _add_shortcut_row(input_text: String, action_text: String) -> void:
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", _row_style())
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content.add_child(row)
+
+	var margin := MarginContainer.new()
+	for side in ["left", "right"]:
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(14, 6, 32))
+	for side in ["top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(10, 5, 28))
+	row.add_child(margin)
+
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", VisualTheme.scaled_int(16, 7, 36))
+	margin.add_child(line)
+
+	var input_label := Label.new()
+	input_label.text = input_text
+	input_label.custom_minimum_size.x = VisualTheme.scaled(190.0, 120.0, 300.0)
+	input_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	input_label.add_theme_color_override("font_color", Color.html(VisualTheme.SUN))
+	VisualTheme.apply_font_size(input_label, 17, 9, 44)
+	line.add_child(input_label)
+
+	var action_label := Label.new()
+	action_label.text = action_text
+	action_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	action_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	action_label.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
+	VisualTheme.apply_font_size(action_label, 17, 9, 44)
+	line.add_child(action_label)
 
 func _add_empty_section(title_text: String) -> void:
 	var row := PanelContainer.new()
