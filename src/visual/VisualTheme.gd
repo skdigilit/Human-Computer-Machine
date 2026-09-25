@@ -57,7 +57,11 @@ const CELL_SIZE := 72.0
 const BOX_SIZE := Vector2(CELL_SIZE, CELL_SIZE)
 const TILE_SIZE := Vector2(CELL_SIZE, CELL_SIZE)
 const WORKER_SIZE := Vector2(CELL_SIZE, CELL_SIZE)
+## Nested corner radii: each level is its container's radius minus the padding
+## between them, so inner curves stay concentric with the outer frame.
 const UI_PANEL_RADIUS := 18
+const UI_BLOCK_RADIUS := 8
+const UI_CHIP_RADIUS := 4
 const BASE_VIEWPORT_SIZE := Vector2(1900.0, 1400.0)
 const USER_UI_SCALE_MIN := 0.50
 const USER_UI_SCALE_MAX := 3.00
@@ -159,7 +163,7 @@ static func apply_button_size(button: Button, base_size: Vector2, base_font_size
 	button.custom_minimum_size = button_min_size(button.text, base_size, base_font_size, horizontal_padding)
 
 ## Standard modular panel used by the warehouse UI.
-static func make_box_style(fill_hex: String, border_hex: String, radius: int = 3) -> StyleBoxFlat:
+static func make_box_style(fill_hex: String, border_hex: String, radius: int = UI_CHIP_RADIUS) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color.html(fill_hex)
 	style.border_color = Color.html(border_hex)

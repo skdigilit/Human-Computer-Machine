@@ -128,10 +128,10 @@ func _size_briefing() -> void:
 func _make_button(text: String, color_hex: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	var style := VisualTheme.make_box_style(color_hex, Color.html(color_hex).darkened(0.3).to_html(false))
+	var style := VisualTheme.make_box_style(color_hex, Color.html(color_hex).darkened(0.3).to_html(false), VisualTheme.UI_BLOCK_RADIUS)
 	style.shadow_size = 0
 	b.add_theme_stylebox_override("normal", style)
-	b.add_theme_stylebox_override("hover", VisualTheme.make_box_style(Color.html(color_hex).lightened(0.1).to_html(false), color_hex))
+	b.add_theme_stylebox_override("hover", VisualTheme.make_box_style(Color.html(color_hex).lightened(0.1).to_html(false), color_hex, VisualTheme.UI_BLOCK_RADIUS))
 	b.add_theme_stylebox_override("pressed", style)
 	b.add_theme_color_override("font_color", Color.html("#FBF7EE"))
 	_apply_transport_button_size(b)
@@ -187,8 +187,8 @@ func _make_icon_button(symbol: String) -> Button:
 	button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-	var normal := VisualTheme.make_box_style("#2A312D", "#59655B", 4)
-	var hover := VisualTheme.make_box_style("#3C463F", "#F7F2DE", 4)
+	var normal := VisualTheme.make_box_style("#2A312D", "#59655B", VisualTheme.UI_BLOCK_RADIUS)
+	var hover := VisualTheme.make_box_style("#3C463F", "#F7F2DE", VisualTheme.UI_BLOCK_RADIUS)
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", normal)

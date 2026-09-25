@@ -73,7 +73,7 @@ func _make_preview() -> Control:
 	style.bg_color = Color.html(InstructionDef.COLOR_JUMP)
 	style.border_color = Color.html(InstructionDef.COLOR_JUMP).darkened(0.25)
 	style.set_border_width_all(3)
-	style.set_corner_radius_all(2)
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_CHIP_RADIUS, 1, 20))
 	preview.add_theme_stylebox_override("panel", style)
 	preview.custom_minimum_size = size
 	return preview

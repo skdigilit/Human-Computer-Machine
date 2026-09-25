@@ -142,7 +142,7 @@ func _build() -> void:
 
 	var tabs := VBoxContainer.new()
 	tabs.custom_minimum_size = Vector2(VisualTheme.scaled(260.0, 170.0, 380.0), 0)
-	tabs.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 4, 24))
+	tabs.add_theme_constant_override("separation", VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
 	body.add_child(tabs)
 
 	_add_tab_button(tabs, TAB_ACCESSIBILITY, "Accessibility")
@@ -220,8 +220,8 @@ func _add_player_options() -> void:
 	VisualTheme.apply_font_size(_grid_size_label, 18, 10, 48)
 	_content.add_child(_grid_size_label)
 	var presets := HFlowContainer.new()
-	presets.add_theme_constant_override("h_separation", VisualTheme.scaled_int(8, 4, 24))
-	presets.add_theme_constant_override("v_separation", VisualTheme.scaled_int(8, 4, 24))
+	presets.add_theme_constant_override("h_separation", VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
+	presets.add_theme_constant_override("v_separation", VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
 	_content.add_child(presets)
 	for dimension in SNAKE_GRID_PRESETS:
 		var button := _make_button(_cells_text(dimension))
@@ -466,8 +466,8 @@ func _apply_button_style(button: Button, active: bool) -> void:
 	var fill := VisualTheme.SUN if active else "#2A312D"
 	var border := "#A06D11" if active else "#59655B"
 	var text := Color.html(VisualTheme.INK) if active else Color.html(VisualTheme.PAPER)
-	var normal := VisualTheme.make_box_style(fill, border, 4)
-	var hover := VisualTheme.make_box_style("#E7B840" if active else "#3C463F", border, 4)
+	var normal := VisualTheme.make_box_style(fill, border, VisualTheme.UI_CHIP_RADIUS)
+	var hover := VisualTheme.make_box_style("#E7B840" if active else "#3C463F", border, VisualTheme.UI_CHIP_RADIUS)
 	for style in [normal, hover]:
 		style.content_margin_left = VisualTheme.scaled(16.0, 8.0, 40.0)
 		style.content_margin_right = VisualTheme.scaled(16.0, 8.0, 40.0)
@@ -483,7 +483,7 @@ func _panel_style() -> StyleBoxFlat:
 	style.bg_color = Color.html(VisualTheme.ROOM_WALL)
 	style.border_color = Color.html(VisualTheme.PAPER)
 	style.set_border_width_all(VisualTheme.scaled_int(4, 2, 18))
-	style.set_corner_radius_all(VisualTheme.scaled_int(8, 4, 24))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_PANEL_RADIUS, 6, 72))
 	return style
 
 func _row_style() -> StyleBoxFlat:
@@ -491,5 +491,5 @@ func _row_style() -> StyleBoxFlat:
 	style.bg_color = Color.html("#222922")
 	style.border_color = Color.html("#59655B")
 	style.set_border_width_all(VisualTheme.scaled_int(2, 1, 10))
-	style.set_corner_radius_all(VisualTheme.scaled_int(6, 3, 18))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_BLOCK_RADIUS, 3, 40))
 	return style

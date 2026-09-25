@@ -325,7 +325,7 @@ func _draw() -> void:
 	var inner := Rect2(Vector2.ZERO, size).grow(-inset)
 	var style := StyleBoxFlat.new()
 	style.bg_color = PROGRESS_FILL
-	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_BLOCK_RADIUS, 3, 40))
 	draw_style_box(style, Rect2(inner.position, Vector2(inner.size.x * _progress, inner.size.y)))
 
 ## Highlight this line as the line a dragged jump arrow would land on.
@@ -344,7 +344,7 @@ func _apply_style() -> void:
 		return
 	var base := InstructionDef.color_for(op)
 	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_BLOCK_RADIUS, 3, 40))
 	if _candidate:
 		style.bg_color = base.lightened(0.2)
 		style.border_color = Color.html("#3FA0FF")
@@ -439,7 +439,7 @@ func _make_preview() -> Control:
 	var preview := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = InstructionDef.color_for(op)
-	style.set_corner_radius_all(7)
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_BLOCK_RADIUS, 3, 40))
 	preview.add_theme_stylebox_override("panel", style)
 	preview.modulate.a = 0.85
 	var row := HBoxContainer.new()

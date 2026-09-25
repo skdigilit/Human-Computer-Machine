@@ -151,9 +151,9 @@ func _apply_page_button_style(button: Button, is_active: bool) -> void:
 	var fill := VisualTheme.SUN if is_active else "#B8AE91"
 	var border := "#8A6415" if is_active else "#8C8269"
 	var text := Color.html(VisualTheme.INK) if is_active else Color(0.22, 0.21, 0.17, 0.55)
-	var style := VisualTheme.make_box_style(fill, border, 4)
+	var style := VisualTheme.make_box_style(fill, border, VisualTheme.UI_BLOCK_RADIUS)
 	button.add_theme_stylebox_override("normal", style)
-	button.add_theme_stylebox_override("hover", style if is_active else VisualTheme.make_box_style("#CDC3A5", border, 4))
+	button.add_theme_stylebox_override("hover", style if is_active else VisualTheme.make_box_style("#CDC3A5", border, VisualTheme.UI_BLOCK_RADIUS))
 	button.add_theme_stylebox_override("pressed", style)
 	VisualTheme.set_button_font_color(button, text)
 	var base_font_size := 24 if button == _add_page_button else 18
@@ -166,7 +166,7 @@ func _make_placeholder() -> PanelContainer:
 	style.bg_color = Color(1, 1, 1, 0.18)
 	style.border_color = Color.html("#8C7E5C")
 	style.set_border_width_all(VisualTheme.scaled_int(2, 1, 14))
-	style.set_corner_radius_all(VisualTheme.scaled_int(7, 2, 36))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_BLOCK_RADIUS, 3, 40))
 	slot.add_theme_stylebox_override("panel", style)
 	slot.custom_minimum_size = VisualTheme.scaled_size(Vector2(0, 42), Vector2(0, 18), Vector2(0, 344))
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -316,9 +316,9 @@ func _make_target_box(owner_block: InstructionBlock) -> JumpTargetBox:
 	style.bg_color = family
 	style.border_color = family.darkened(0.25)
 	style.set_border_width_all(VisualTheme.scaled_int(3, 1, 18))
-	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
+	style.set_corner_radius_all(VisualTheme.scaled_int(VisualTheme.UI_CHIP_RADIUS, 1, 20))
 	box.add_theme_stylebox_override("normal", style)
-	box.add_theme_stylebox_override("hover", VisualTheme.make_box_style(family.lightened(0.3).to_html(false), family.to_html(false), 2))
+	box.add_theme_stylebox_override("hover", VisualTheme.make_box_style(family.lightened(0.3).to_html(false), family.to_html(false)))
 	box.add_theme_stylebox_override("pressed", style)
 	box.custom_minimum_size = _target_box_size()
 	return box
