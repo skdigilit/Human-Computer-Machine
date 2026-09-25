@@ -27,7 +27,7 @@ func _run() -> void:
 	var buffered_without_advancing := (
 		game._step_buffered
 		and game._vm.steps_taken == 1
-		and game._room._animation_speed_scale == RoomView.MANUAL_STEP_SPEED_SCALE
+		and (game._room as RoomView)._animation_speed_scale == RoomView.MANUAL_STEP_SPEED_SCALE
 	)
 
 	var start := Time.get_ticks_msec()
@@ -41,7 +41,7 @@ func _run() -> void:
 	var one_step_was_buffered := (
 		game._vm.steps_taken == 2
 		and not game._step_buffered
-		and game._room._animation_speed_scale == 1.0
+		and (game._room as RoomView)._animation_speed_scale == 1.0
 	)
 	var passed := first_step_started and buffered_without_advancing and one_step_was_buffered
 	print("steps   = ", game._vm.steps_taken)

@@ -26,6 +26,9 @@ var memory_changed: bool = false
 var memory_value: int = 0
 ## True when this step placed an incorrect value into the OUTBOX.
 var wrong_outbox: bool = false
+## How long the game loop should pause after this step before running the next
+## instruction (snake "tick"). Zero means "use the normal step delay".
+var wait_seconds: float = 0.0
 
 ## Set when the program finished (successfully or with an error).
 var halted: bool = false

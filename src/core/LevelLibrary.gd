@@ -13,6 +13,7 @@ static func mail_room() -> Level:
 	)
 	level.inbox = [4, 2, 7] as Array[int]
 	level.expected_outbox = [4, 2, 7] as Array[int]
+	level.add_test_case([9, -1, 0, 6] as Array[int], [9, -1, 0, 6] as Array[int])
 	level.memory_size = 0
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -30,6 +31,7 @@ static func busy_mail_room() -> Level:
 	)
 	level.inbox = [6, 1, 8, 3] as Array[int]
 	level.expected_outbox = [6, 1, 8, 3] as Array[int]
+	level.add_test_case([-4, 7, 2, 0, 5] as Array[int], [-4, 7, 2, 0, 5] as Array[int])
 	level.memory_size = 0
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -47,6 +49,7 @@ static func swap_floor() -> Level:
 	)
 	level.inbox = [8, 3] as Array[int]
 	level.expected_outbox = [3, 8] as Array[int]
+	level.add_test_case([-2, 9] as Array[int], [9, -2] as Array[int])
 	level.memory_size = 2
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -65,6 +68,7 @@ static func add_one_room() -> Level:
 	)
 	level.inbox = [2, 5, 8] as Array[int]
 	level.expected_outbox = [3, 6, 9] as Array[int]
+	level.add_test_case([-3, 0, 6] as Array[int], [-2, 1, 7] as Array[int])
 	level.memory_size = 1
 	level.initial_memory = {0: 1}
 	level.palette = [
@@ -85,6 +89,7 @@ static func rainy_summer() -> Level:
 	)
 	level.inbox = [2, 3, 5, 1, -2, 4] as Array[int]
 	level.expected_outbox = [5, 6, 2] as Array[int]
+	level.add_test_case([7, -2, 0, 4, -5, -6] as Array[int], [5, 4, -11] as Array[int])
 	level.memory_size = 1
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -104,6 +109,7 @@ static func zero_exterminator() -> Level:
 	)
 	level.inbox = [4, 0, -2, 0, 7, 3] as Array[int]
 	level.expected_outbox = [4, -2, 7, 3] as Array[int]
+	level.add_test_case([0, -5, 2, 0, 0, 8] as Array[int], [-5, 2, 8] as Array[int])
 	level.memory_size = 0
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -125,6 +131,7 @@ static func zero_preservation() -> Level:
 	)
 	level.inbox = [0, 5, 0, -2, 3, 0] as Array[int]
 	level.expected_outbox = [0, 0, 0] as Array[int]
+	level.add_test_case([4, 0, 0, -8, 1] as Array[int], [0, 0] as Array[int])
 	level.memory_size = 0
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -144,6 +151,7 @@ static func countdown() -> Level:
 	)
 	level.inbox = [3, 2] as Array[int]
 	level.expected_outbox = [2, 1, 0, 1, 0] as Array[int]
+	level.add_test_case([4, 1] as Array[int], [3, 2, 1, 0, 0] as Array[int])
 	level.memory_size = 1
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -165,6 +173,7 @@ static func tripler_room() -> Level:
 	)
 	level.inbox = [2, -3, 4] as Array[int]
 	level.expected_outbox = [6, -9, 12] as Array[int]
+	level.add_test_case([0, 5, -1] as Array[int], [0, 15, -3] as Array[int])
 	level.memory_size = 1
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -187,6 +196,7 @@ static func octoplier_suite() -> Level:
 	)
 	level.inbox = [1, -2, 3] as Array[int]
 	level.expected_outbox = [8, -16, 24] as Array[int]
+	level.add_test_case([2, 0, -4] as Array[int], [16, 0, -32] as Array[int])
 	level.memory_size = 1
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -209,6 +219,7 @@ static func sub_hallway() -> Level:
 	)
 	level.inbox = [8, 3, 2, 5, -1, -4] as Array[int]
 	level.expected_outbox = [5, -3, 3] as Array[int]
+	level.add_test_case([-2, 6, 9, 9, 0, -4] as Array[int], [-8, 0, 4] as Array[int])
 	level.memory_size = 2
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -230,6 +241,7 @@ static func equalization_room() -> Level:
 	)
 	level.inbox = [4, 4, 7, 2, -3, -3, 1, 5] as Array[int]
 	level.expected_outbox = [0, 0] as Array[int]
+	level.add_test_case([2, 2, 0, 7, -4, -4, 5, 1] as Array[int], [0, 0] as Array[int])
 	level.memory_size = 2
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -252,6 +264,7 @@ static func tetracontiplier() -> Level:
 	)
 	level.inbox = [1, -2, 3] as Array[int]
 	level.expected_outbox = [40, -80, 120] as Array[int]
+	level.add_test_case([-3, 0, 2] as Array[int], [-120, 0, 80] as Array[int])
 	level.memory_size = 5
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -273,6 +286,7 @@ static func maximization_room() -> Level:
 	)
 	level.inbox = [3, 8, -2, -7, 5, 5] as Array[int]
 	level.expected_outbox = [8, -2, 5] as Array[int]
+	level.add_test_case([9, 1, -8, -3, 0, 0] as Array[int], [9, -3, 0] as Array[int])
 	level.memory_size = 2
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -298,6 +312,7 @@ static func absolute_positivity() -> Level:
 	)
 	level.inbox = [4, -7, 0, 3] as Array[int]
 	level.expected_outbox = [4, 7, 0, 3] as Array[int]
+	level.add_test_case([-5, 2, -1, 0] as Array[int], [5, 2, 1, 0] as Array[int])
 	level.memory_size = 2
 	level.initial_memory = {1: 0}
 	level.palette = [
@@ -324,6 +339,7 @@ static func exclusive_lounge() -> Level:
 	)
 	level.inbox = [3, 8, -2, -7, 4, -1, -5, 6] as Array[int]
 	level.expected_outbox = [0, 0, 1, 1] as Array[int]
+	level.add_test_case([-3, 5, -4, -2, 7, 1, 6, -8] as Array[int], [1, 0, 0, 1] as Array[int])
 	level.memory_size = 8
 	level.initial_memory = {4: 0, 5: 0, 6: 1, 7: 1}
 	level.palette = [
@@ -349,6 +365,7 @@ static func multiplication_workshop() -> Level:
 	)
 	level.inbox = [3, 4, 2, 5, 0, 7] as Array[int]
 	level.expected_outbox = [12, 10, 0] as Array[int]
+	level.add_test_case([6, 2, 1, 8, 4, 0] as Array[int], [12, 8, 0] as Array[int])
 	level.memory_size = 4
 	level.initial_memory = {3: 0}
 	level.palette = [
@@ -376,6 +393,7 @@ static func zero_terminated_sum() -> Level:
 	)
 	level.inbox = [3, -1, 4, 0, 5, 2, 0, 0] as Array[int]
 	level.expected_outbox = [6, 7, 0] as Array[int]
+	level.add_test_case([-2, 7, 0, 4, 4, -3, 0, 6, 0] as Array[int], [5, 5, 6] as Array[int])
 	level.memory_size = 4
 	level.initial_memory = {1: 0, 2: 0, 3: 0}
 	level.palette = [
@@ -402,6 +420,7 @@ static func fibonacci_visitor() -> Level:
 	)
 	level.inbox = [10, 6] as Array[int]
 	level.expected_outbox = [1, 1, 2, 3, 5, 8, 1, 1, 2, 3, 5] as Array[int]
+	level.add_test_case([8, 4] as Array[int], [1, 1, 2, 3, 5, 8, 1, 1, 2, 3] as Array[int])
 	level.memory_size = 6
 	level.initial_memory = {5: 0}
 	level.palette = [
@@ -429,6 +448,7 @@ static func littlest_number() -> Level:
 	)
 	level.inbox = [7, 2, 5, 0, -1, -6, 3, 0, 4, 4, 0] as Array[int]
 	level.expected_outbox = [2, -6, 4] as Array[int]
+	level.add_test_case([3, 9, -2, 0, 8, 1, 0, -5, -4, 0] as Array[int], [-2, 1, -5] as Array[int])
 	level.memory_size = 2
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -454,6 +474,7 @@ static func cumulative_countdown() -> Level:
 	)
 	level.inbox = [3, 5, 0, 1] as Array[int]
 	level.expected_outbox = [6, 15, 0, 1] as Array[int]
+	level.add_test_case([2, 4, 1, 6] as Array[int], [3, 10, 1, 21] as Array[int])
 	level.memory_size = 2
 	level.palette = [
 		InstructionDef.Op.INBOX,
@@ -480,6 +501,7 @@ static func small_divide() -> Level:
 	)
 	level.inbox = [8, 2, 15, 3, 12, 4] as Array[int]
 	level.expected_outbox = [4, 5, 3] as Array[int]
+	level.add_test_case([18, 6, 20, 5, 7, 7] as Array[int], [3, 4, 1] as Array[int])
 	level.memory_size = 4
 	level.initial_memory = {3: 0}
 	level.palette = [
@@ -507,6 +529,7 @@ static func mod_module() -> Level:
 	)
 	level.inbox = [8, 4, 12, 2] as Array[int]
 	level.expected_outbox = [2, 1, 0, 2] as Array[int]
+	level.add_test_case([0, 7, 5, 15] as Array[int], [0, 1, 2, 0] as Array[int])
 	level.memory_size = 1
 	level.initial_memory = {0: 3}
 	level.palette = [
@@ -537,6 +560,7 @@ static func sorting_floor() -> Level:
 	)
 	level.inbox = [5, 1, 3] as Array[int]
 	level.expected_outbox = [1, 3, 5] as Array[int]
+	level.add_test_case([-2, 8, 0] as Array[int], [-2, 0, 8] as Array[int])
 	level.memory_size = 4
 	level.initial_memory = {}
 	level.palette = [

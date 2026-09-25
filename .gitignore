@@ -22,3 +22,6 @@ Fonts/*
 !Fonts/MonaspaceNeon-WideSemiBold.otf.import
 !Fonts/MonaspaceRadon-SemiWideBold.otf
 !Fonts/MonaspaceRadon-SemiWideBold.otf.import
+
+# Local development checks and captured UI artifacts
+/tests/

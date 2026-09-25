@@ -16,7 +16,7 @@ func _run() -> void:
 	var initial_palette_width := game._palette.size.x
 	var initial_briefing_width := game._briefing.size.x
 	var initial_control_height := game._control_bar.size.y
-	var initial_worker_position := game._room.worker.position
+	var initial_worker_position := (game._room as RoomView).worker.position
 	var initial_viewport := Vector2(
 		game._briefing.position.x + game._briefing.size.x + Game.PANEL_GAP,
 		game._control_bar.position.y + game._control_bar.size.y + Game.PANEL_GAP
@@ -36,7 +36,7 @@ func _run() -> void:
 		game._control_bar.position.y + game._control_bar.size.y,
 		grown_viewport.y - Game.PANEL_GAP
 	)
-	var worker_position_kept := game._room.worker.position == initial_worker_position
+	var worker_position_kept := (game._room as RoomView).worker.position == initial_worker_position
 	var grown_no_overlap := _regions_do_not_overlap(game)
 	var grown_inside_viewport := _regions_inside_viewport(game, grown_viewport)
 	var grown_banner_aligned := _banner_is_centered_above_bottom_decoration(game)
@@ -51,7 +51,7 @@ func _run() -> void:
 		game._control_bar.position.y + game._control_bar.size.y,
 		shrunk_viewport.y - Game.PANEL_GAP
 	)
-	var worker_position_kept_after_shrink := game._room.worker.position == initial_worker_position
+	var worker_position_kept_after_shrink := (game._room as RoomView).worker.position == initial_worker_position
 	var shrunk_no_overlap := _regions_do_not_overlap(game)
 	var shrunk_inside_viewport := _regions_inside_viewport(game, shrunk_viewport)
 	var shrunk_banner_aligned := _banner_is_centered_above_bottom_decoration(game)

@@ -1,8 +1,7 @@
 class_name BriefingNote
 extends Panel
 
-## The "sticky note" above the program that states the level's title and the
-## boss's instructions, echoing the briefing card in the original game.
+## The puzzle title and expandable instructions in the bottom control bar.
 
 signal previous_requested()
 signal next_requested()
@@ -16,7 +15,7 @@ var _hint_button: Button
 var _collapse_button: Button
 var _show_hint_button: bool = true
 var _hint_visible: bool = false
-var _collapsed: bool = false
+var _collapsed: bool = true
 
 func _init() -> void:
 	clip_contents = true
@@ -58,41 +57,28 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	previous.pressed.connect(func() -> void: previous_requested.emit())
 	header.add_child(previous)
 
-	var counter := Label.new()
-	counter.text = "%d / %d" % [index + 1, total]
-	counter.add_theme_color_override("font_color", Color.html("#6B5E40"))
-	VisualTheme.apply_font_size(counter, 18)
-	counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	counter.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	counter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(counter)
+	var title := Label.new()
+	title.text = level.title
+	title.tooltip_text = "%d / %d" % [index + 1, total]
+	title.add_theme_color_override("font_color", Color.html("#3A3526"))
+	VisualTheme.apply_font_size(title, 26, 8, 208)
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
 
 	_hint_button = _make_nav_button("?")
 	_hint_button.tooltip_text = "Show hint"
 	_hint_button.pressed.connect(show_hint)
 	header.add_child(_hint_button)
 
+	_collapse_button = _make_nav_button("+")
+	_collapse_button.pressed.connect(func() -> void: set_collapsed(not _collapsed))
+	header.add_child(_collapse_button)
+
 	var next := _make_nav_button(">")
 	next.disabled = index >= total - 1
 	next.pressed.connect(func() -> void: next_requested.emit())
 	header.add_child(next)
-
-	var title_row := HBoxContainer.new()
-	title_row.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 36))
-	title_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	column.add_child(title_row)
-
-	var title := Label.new()
-	title.text = level.title
-	title.add_theme_color_override("font_color", Color.html("#3A3526"))
-	VisualTheme.apply_font_size(title, 26, 8, 208)
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_row.add_child(title)
-
-	_collapse_button = _make_nav_button("+")
-	_collapse_button.pressed.connect(func() -> void: set_collapsed(not _collapsed))
-	title_row.add_child(_collapse_button)
 
 	var briefing_parts := level.briefing.split("\n\n", false, 1)
 	_problem_text = briefing_parts[0]
@@ -101,30 +87,23 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	_refresh_hint_button()
 
 	_body = Label.new()
-	_body.text = _problem_text
-	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body.text = _single_line(_problem_text)
+	_body.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_body.add_theme_color_override("font_color", Color.html("#4A4534"))
 	VisualTheme.apply_font_size(_body, 22, 8, 160)
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	var body_width := Control.new()
-	body_width.custom_minimum_size.x = 1
-	body_width.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body_width.add_child(_body)
-	_body.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-
 	_body_scroll = ScrollContainer.new()
-	_body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_body_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_body_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_body_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_body_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
-	_body_scroll.add_child(body_width)
+	_body_scroll.add_child(_body)
 	column.add_child(_body_scroll)
 	_refresh_collapsed_state()
 
-## Shows only the title when collapsed; the game resizes the instruction list
-## in response to collapsed_changed.
+## Shows only the title row when collapsed.
 func set_collapsed(collapsed: bool) -> void:
 	if _collapsed == collapsed:
 		return
@@ -135,9 +114,18 @@ func set_collapsed(collapsed: bool) -> void:
 func is_collapsed() -> bool:
 	return _collapsed
 
-## Enough room for the navigation and title rows at the active UI scale.
+## Enough room for the single title and navigation row at the active UI scale.
 func collapsed_height() -> float:
-	return VisualTheme.scaled(150.0, 75.0, 1200.0)
+	return VisualTheme.scaled(82.0, 42.0, 656.0)
+
+## Reserve a complete description line and its horizontal scrollbar.
+func expanded_height() -> float:
+	if _body == null or _body_scroll == null:
+		return collapsed_height()
+	return collapsed_height() + _body.get_combined_minimum_size().y + _body_scroll.get_h_scroll_bar().get_combined_minimum_size().y + VisualTheme.scaled(8.0, 3.0, 40.0)
+
+func _single_line(text: String) -> String:
+	return " ".join(text.replace("\r", " ").replace("\n", " ").replace("\t", " ").split(" ", false))
 
 func _refresh_collapsed_state() -> void:
 	if _body_scroll != null:
@@ -150,8 +138,10 @@ func _refresh_collapsed_state() -> void:
 func show_hint() -> void:
 	if _body == null or _hint_text.is_empty():
 		return
+	set_collapsed(false)
 	_hint_visible = not _hint_visible
-	_body.text = _problem_text + "\n\n" + _hint_text if _hint_visible else _problem_text
+	_body.text = _single_line(_problem_text + "  Hint: " + _hint_text if _hint_visible else _problem_text)
+	_body_scroll.scroll_horizontal = 0
 
 func set_hint_button_visible(show: bool) -> void:
 	_show_hint_button = show

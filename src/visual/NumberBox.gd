@@ -9,6 +9,7 @@ const MAX_FONT_SIZE := 184
 const TEXT_HORIZONTAL_PADDING := 10.0
 
 var value: int = 0
+var _display_override: String = ""
 
 var _panel: Panel
 var _label: Label
@@ -47,6 +48,13 @@ func apply_ui_scale() -> void:
 ## Change the displayed value (e.g. after add/sub/bump).
 func set_value(p_value: int) -> void:
 	value = p_value
+	_display_override = ""
+	if is_instance_valid(_label):
+		_refresh()
+
+## Snake can place an arrow or printable character in the same memory box.
+func set_display_text(display: String) -> void:
+	_display_override = display
 	if is_instance_valid(_label):
 		_refresh()
 
@@ -60,7 +68,7 @@ func set_palette(fill_hex: String, border_hex: String, text_hex: String = Visual
 		_label.add_theme_color_override("font_color", Color.html(_text_hex))
 
 func _refresh() -> void:
-	_label.text = str(value)
+	_label.text = _display_override if not _display_override.is_empty() else str(value)
 	_fit_label_font_size()
 
 ## Keep the box on the fixed warehouse grid while reducing only numerals that

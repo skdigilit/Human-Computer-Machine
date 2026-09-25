@@ -19,16 +19,34 @@ const HEADER_HEIGHT := 50.0
 const MAX_PAGES := 3
 const TARGET_BOX_SIZE := Vector2(86, 34)
 const ROW_DIM_ALPHA := 0.3 ## Opacity of a line while it is being dragged.
-const CONNECTOR_LANE_GAP := 8.0
+const CONNECTOR_LANE_GAP := 10.0
+const CONNECTOR_WIDTH := 4.0
+const CONNECTOR_HOVER_WIDTH := 6.0
+const CONNECTOR_HALO_EXTRA := 4.0        ## Extra stroke width of the pale outline behind a connector.
+const CONNECTOR_HOVER_DISTANCE := 8.0    ## Cursor distance (px) that counts as hovering the line.
+const CONNECTOR_COLOR := "#5A66B0"
+const CONNECTOR_HOVER_COLOR := "#3F7BFF"
+const CONNECTOR_HALO_COLOR := Color(1.0, 1.0, 1.0, 0.55)
+const CONNECTOR_PROGRESS_COLOR := InstructionDef.COLOR_TICK  ## Countdown overlay on a waiting clock's connector.
+const LIST_BOTTOM_PADDING := 96.0        ## Empty space after the last line so it can be scrolled clear.
 
 var program: Program
 var memory_size: int = 0
+var _memory_values_snapshot: Array[int] = []
+var _wait_scale_slot: int = -1
+var _memory_key_snapshot: Array[bool] = []
 
 var _scroll: ScrollContainer
 var _list: VBoxContainer
 var _blocks: Array[InstructionBlock] = []
 var _hovered_block: InstructionBlock = null
 var _active_index: int = -1
+## Line currently showing a progress fill (snake wait), -1 when none.
+var _progress_index: int = -1
+## Instruction id and elapsed fraction of that wait, so the underlay can draw
+## the same countdown travelling along the block's own connector.
+var _progress_id: int = -1
+var _progress_fraction: float = 0.0
 var _jump_underlay: Control
 var _page_header: HBoxContainer
 var _target_boxes: Dictionary = {} ## Jump instruction id -> dummy target box.
@@ -45,6 +63,8 @@ var _drop_handled: bool = false             ## True once a drop was consumed her
 var _jump_drag_source: InstructionBlock = null  ## Jump whose arrow is being dragged.
 var _jump_drag_origin: Control = null       ## Handle or blank box drag started from.
 var _candidate_block: InstructionBlock = null   ## Line a dragged arrow points at.
+var _bottom_pad: Control = null             ## Spacer row after the last instruction.
+var _hovered_jump_id: int = -1              ## Jump whose connector is drawn highlighted.
 
 func _init() -> void:
 	clip_contents = true
@@ -237,11 +257,21 @@ func rebuild() -> void:
 	_hovered_block = null
 	_target_boxes.clear()
 	_candidate_block = null
+	# Row indexes and blocks are about to be replaced, so any countdown still
+	# pointing at the old ones has to go with them.
+	_progress_index = -1
+	_progress_id = -1
+	_progress_fraction = 0.0
 
+	var depth := 0
 	var rows: Array[Control] = []
 	for i in program.size():
 		var inst := program.instructions[i]
-		rows.append(_make_row(i, inst))
+		if inst.op == InstructionDef.Op.END_IF:
+			depth = maxi(0, depth - 1)
+		rows.append(_make_row(i, inst, depth))
+		if inst.op == InstructionDef.Op.IF:
+			depth += 1
 
 	for target_index in program.size():
 		for jump_index in program.size():
@@ -257,20 +287,38 @@ func rebuild() -> void:
 			_target_boxes[jump.id] = box
 			_list.add_child(_make_target_row(box))
 		_list.add_child(rows[target_index])
+	_bottom_pad = _make_bottom_pad()
+	_list.add_child(_bottom_pad)
+	for block in _blocks:
+		if block.op == InstructionDef.Op.MOVE:
+			_update_move_preview(block)
 	_refresh_all_targets()
 	_update_jump_underlay()
 	queue_redraw()
 
-## Blank instruction-sized box showing where a jump lands.
+## Empty spacer after the last row so the final instruction can be scrolled
+## away from the panel edge, making it easier to hover, pick up and drop.
+func _make_bottom_pad() -> Control:
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(0, VisualTheme.scaled(LIST_BOTTOM_PADDING, 36.0, 480.0))
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.set_meta("bottom_pad", true)
+	return pad
+
+## Blank instruction-sized box showing where a jump lands. It takes the colour
+## of the block that owns it, so the snake clock's landing box reads as violet
+## like the clock rather than as one more blue jump. Every office jump shares
+## the jump colour, so nothing changes there.
 func _make_target_box(owner_block: InstructionBlock) -> JumpTargetBox:
 	var box := JumpTargetBox.new(owner_block)
+	var family := InstructionDef.color_for(owner_block.instruction.op)
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color.html(InstructionDef.COLOR_JUMP)
-	style.border_color = Color.html(InstructionDef.COLOR_JUMP).darkened(0.25)
+	style.bg_color = family
+	style.border_color = family.darkened(0.25)
 	style.set_border_width_all(VisualTheme.scaled_int(3, 1, 18))
 	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
 	box.add_theme_stylebox_override("normal", style)
-	box.add_theme_stylebox_override("hover", VisualTheme.make_box_style("#96A0D6", InstructionDef.COLOR_JUMP, 2))
+	box.add_theme_stylebox_override("hover", VisualTheme.make_box_style(family.lightened(0.3).to_html(false), family.to_html(false), 2))
 	box.add_theme_stylebox_override("pressed", style)
 	box.custom_minimum_size = _target_box_size()
 	return box
@@ -291,22 +339,30 @@ func _make_target_row(box: JumpTargetBox) -> Control:
 	return row
 
 ## Build a single "NN  [block]" row.
-func _make_row(index: int, inst: Instruction) -> Control:
+func _make_row(index: int, inst: Instruction, depth: int = 0) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 36))
 	row.mouse_filter = Control.MOUSE_FILTER_PASS
 
 	var number := Label.new()
-	number.text = "%02d" % (index + 1)
+	number.text = "" if inst.op == InstructionDef.Op.END_IF else "%02d" % (index + 1)
 	number.custom_minimum_size = Vector2(_line_number_width(), 0)
 	number.add_theme_color_override("font_color", Color.html("#6B5E40"))
 	VisualTheme.apply_font_size(number, 18, 6, 160)
 	number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(number)
+	if depth > 0:
+		var indent := Control.new()
+		indent.custom_minimum_size.x = depth * VisualTheme.scaled(26, 14, 100)
+		indent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(indent)
 
 	var block := InstructionBlock.new(inst.op, false, inst)
 	block.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	block.set_memory_size(memory_size)
+	if inst.op == InstructionDef.Op.MOVE:
+		_update_move_preview(block)
+	_update_wait_preview(block)
 	block.request_target_pick.connect(_on_cycle_target)
 	block.instruction_changed.connect(func() -> void: program_changed.emit())
 	block.mouse_entered.connect(_on_block_mouse_entered.bind(block))
@@ -314,6 +370,30 @@ func _make_row(index: int, inst: Instruction) -> Control:
 	row.add_child(block)
 	_blocks.append(block)
 	return row
+
+## Snake updates the value shown beside each MOVE's memory address.
+func set_memory_snapshot(values: Array[int], key_flags: Array[bool], wait_scale_slot: int = -1) -> void:
+	_wait_scale_slot = wait_scale_slot
+	_memory_values_snapshot = values.duplicate()
+	_memory_key_snapshot = key_flags.duplicate()
+	for block in _blocks:
+		if block.op == InstructionDef.Op.MOVE:
+			_update_move_preview(block)
+		_update_wait_preview(block)
+
+func _update_wait_preview(block: InstructionBlock) -> void:
+	if block.op != InstructionDef.Op.TICK:
+		return
+	var slot := _wait_scale_slot
+	var value := _memory_values_snapshot[slot] if slot >= 0 and slot < _memory_values_snapshot.size() else StepAction.NULL_VALUE
+	var is_key := _memory_key_snapshot[slot] if slot >= 0 and slot < _memory_key_snapshot.size() else false
+	block.set_wait_preview(slot, value, is_key)
+
+func _update_move_preview(block: InstructionBlock) -> void:
+	var address := block.instruction.address
+	var value := _memory_values_snapshot[address] if address >= 0 and address < _memory_values_snapshot.size() else StepAction.NULL_VALUE
+	var is_key := _memory_key_snapshot[address] if address >= 0 and address < _memory_key_snapshot.size() else false
+	block.set_memory_preview(value, is_key)
 
 func _on_block_mouse_entered(block: InstructionBlock) -> void:
 	_hovered_block = block
@@ -347,6 +427,25 @@ func _refresh_all_targets() -> void:
 # --- Execution highlight ------------------------------------------------------
 
 ## Highlight the line the VM is about to run; pass -1 to clear.
+## Fill the background of line `index` to `fraction` (0..1) while it waits.
+## Pass -1 to clear. Only one line shows progress at a time.
+func set_line_progress(index: int, fraction: float) -> void:
+	if _progress_index != index and _progress_index >= 0 and _progress_index < _blocks.size():
+		_blocks[_progress_index].set_progress(0.0)
+	_progress_index = index
+	var live := index >= 0 and index < _blocks.size()
+	if live:
+		_blocks[index].set_progress(fraction)
+	# Mirror the same countdown onto this block's connector, so a wait reads as
+	# "travelling back to line N" instead of as a program sitting still. Redraw
+	# only when something actually moved: this runs once per frame per wait.
+	var next_id: int = _blocks[index].instruction.id if live else -1
+	var next_fraction := clampf(fraction, 0.0, 1.0) if live else 0.0
+	if next_id != _progress_id or not is_equal_approx(next_fraction, _progress_fraction):
+		_progress_id = next_id
+		_progress_fraction = next_fraction
+		_update_jump_underlay()
+
 func set_active_line(index: int) -> void:
 	if _active_index >= 0 and _active_index < _blocks.size():
 		_blocks[_active_index].set_active(false)
@@ -361,7 +460,7 @@ func delete_hovered_instruction() -> bool:
 	if program == null or InstructionBlock.has_active_click_pickup() or get_viewport().gui_is_dragging():
 		return false
 	var block := _hovered_program_block()
-	if block == null:
+	if block == null or block.op == InstructionDef.Op.END_IF:
 		return false
 	var index := program.index_of_id(block.instruction.id)
 	if index == -1:
@@ -386,7 +485,7 @@ func _hovered_program_block() -> InstructionBlock:
 
 ## Scroll so a block is within the viewport (follows execution).
 func _ensure_visible(block: InstructionBlock) -> void:
-	var top := block.position.y
+	var top := block.global_position.y - _list.global_position.y
 	var bottom := top + block.size.y
 	if top < _scroll.scroll_vertical:
 		_scroll.scroll_vertical = int(top)
@@ -479,7 +578,11 @@ func can_accept_at(global_point: Vector2, data: Variant) -> bool:
 func drop_at(global_point: Vector2, data: Variant) -> void:
 	match data[InstructionBlock.DRAG_KIND]:
 		InstructionBlock.DRAG_PALETTE:
-			program.insert_at(_insert_index(global_point.y), Instruction.new(data[InstructionBlock.DRAG_OP]))
+			var index := _insert_index(global_point.y)
+			var inst := Instruction.new(data[InstructionBlock.DRAG_OP])
+			program.insert_at(index, inst)
+			if inst.op == InstructionDef.Op.IF:
+				program.insert_at(index + 1, Instruction.new(InstructionDef.Op.END_IF))
 		InstructionBlock.DRAG_REORDER:
 			_apply_reorder(data[InstructionBlock.DRAG_BLOCK], global_point)
 		InstructionBlock.DRAG_JUMP_TARGET:
@@ -501,10 +604,7 @@ func _apply_reorder(moved: InstructionBlock, global_point: Vector2) -> void:
 	if from == -1:
 		return
 	var index := _insert_index(global_point.y)
-	if from < index:
-		index -= 1  # removing the source shifts later indices left.
-	var inst := program.remove_at(from)
-	program.insert_at(index, inst)
+	program.move_group(from, index)
 
 ## Point a jump's arrow at whatever line the drop landed on.
 func _apply_jump_target(source: InstructionBlock, global_point: Vector2) -> void:
@@ -540,6 +640,10 @@ func _show_placeholder_at(index: int) -> void:
 ## attached to the instruction after them, so an insertion lands before both.
 func _list_child_index_for_insert(index: int) -> int:
 	if index >= _blocks.size():
+		# The placeholder was just appended after the pad, so moving it to the
+		# pad's index lands it between the last row and the padding.
+		if _bottom_pad and _bottom_pad.get_parent() == _list:
+			return _bottom_pad.get_index()
 		return _list.get_child_count() - (1 if _placeholder.get_parent() == _list else 0)
 	var child_index := _blocks[index].get_parent().get_index()
 	while child_index > 0 and _list.get_child(child_index - 1).has_meta("jump_target_marker"):
@@ -589,6 +693,7 @@ func _process(_delta: float) -> void:
 	if get_viewport().gui_is_dragging() and not _is_mouse_over_list():
 		_hide_placeholder()
 		_clear_candidate()
+	_update_hovered_jump()
 	_update_jump_underlay()
 	if _jump_drag_source:
 		queue_redraw()
@@ -609,32 +714,166 @@ func _update_jump_underlay() -> void:
 
 ## Draw straight orthogonal connectors as a secondary cue between each jump and
 ## its dummy target box. The target box itself remains the primary destination.
+## Vertical runs are packed into lanes so no two connectors share a line, and
+## the hovered jump's connector is drawn last, brighter and thicker.
 func _draw_jump_underlay() -> void:
 	if program == null:
 		return
-	var color := Color.html("#7B86C4")
-	for block_index in _blocks.size():
-		var block := _blocks[block_index]
+	_draw_if_braces()
+	var connectors := _build_connectors()
+	var hovered: Dictionary = {}
+	for connector: Dictionary in connectors:
+		if connector["id"] == _hovered_jump_id:
+			hovered = connector
+			continue
+		_draw_connector(connector, false)
+	if not hovered.is_empty():
+		_draw_connector(hovered, true)
+	_draw_wait_progress(connectors)
+
+## Paint the counting-down clock's connector over the top of the plain one, up
+## to however much of the wait has elapsed. The moving tip keeps the arrowhead,
+## so the loop back to the target line is something the player watches happen.
+func _draw_wait_progress(connectors: Array[Dictionary]) -> void:
+	if _progress_id == -1 or _progress_fraction <= 0.0:
+		return
+	for connector: Dictionary in connectors:
+		if connector["id"] != _progress_id:
+			continue
+		var points := _polyline_prefix(connector["points"], _progress_fraction)
+		if points.size() < 2:
+			return
+		var width := VisualTheme.scaled(CONNECTOR_HOVER_WIDTH, 2.0, 24.0)
+		var color := Color.html(CONNECTOR_PROGRESS_COLOR)
+		_jump_underlay.draw_polyline(points, color, width, true)
+		_draw_underlay_arrowhead(points[-1], (points[-1] - points[-2]).normalized(), color)
+		return
+
+## The leading `fraction` of a polyline, measured along its real length so the
+## tip travels at a constant speed through the corners.
+static func _polyline_prefix(points: PackedVector2Array, fraction: float) -> PackedVector2Array:
+	if points.size() < 2:
+		return PackedVector2Array()
+	var total := 0.0
+	for i in points.size() - 1:
+		total += points[i].distance_to(points[i + 1])
+	if total <= 0.0:
+		return PackedVector2Array()
+	var wanted := total * clampf(fraction, 0.0, 1.0)
+	var walked := 0.0
+	var prefix := PackedVector2Array([points[0]])
+	for i in points.size() - 1:
+		var segment := points[i].distance_to(points[i + 1])
+		if walked + segment >= wanted:
+			var along := 0.0 if segment <= 0.0 else (wanted - walked) / segment
+			prefix.append(points[i].lerp(points[i + 1], along))
+			return prefix
+		walked += segment
+		prefix.append(points[i + 1])
+	return prefix
+
+## Geometry for every visible jump connector: {id, points}. Lanes are assigned
+## shortest-span-first so nested jumps sit inside, outer jumps sit outside.
+func _build_connectors() -> Array[Dictionary]:
+	var connectors: Array[Dictionary] = []
+	var max_right := 0.0
+	for block in _blocks:
+		max_right = maxf(max_right, _local_rect(block).end.x)
+	for block in _blocks:
 		var inst := block.instruction
 		if not inst.is_jump() or not _target_boxes.has(inst.id):
 			continue
 		var source_rect := _local_rect(block)
 		var target_box: JumpTargetBox = _target_boxes[inst.id]
-		var start := Vector2(source_rect.position.x + source_rect.size.x, source_rect.get_center().y)
 		var target_rect := _local_control_rect(target_box)
+		max_right = maxf(max_right, target_rect.end.x)
+		var start := Vector2(source_rect.end.x, source_rect.get_center().y)
 		var end := Vector2(target_rect.end.x, target_rect.get_center().y)
-		var lane_x := minf(
-			size.x - VisualTheme.scaled(14.0, 5.0, 56.0),
-			maxf(start.x, end.x) + VisualTheme.scaled(38.0, 14.0, 152.0) + block_index * _connector_lane_gap()
-		)
-		var points := PackedVector2Array([
-			start,
-			Vector2(lane_x, start.y),
-			Vector2(lane_x, end.y),
-			end,
+		connectors.append({"id": inst.id, "start": start, "end": end})
+	# Shortest vertical spans first so they claim the inner lanes.
+	connectors.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return absf(a["end"].y - a["start"].y) < absf(b["end"].y - b["start"].y))
+	var lane_spans: Array[Array] = []  ## lane -> list of [min_y, max_y]
+	var margin := _connector_lane_gap() * 0.5
+	for connector in connectors:
+		var lo := minf(connector["start"].y, connector["end"].y) - margin
+		var hi := maxf(connector["start"].y, connector["end"].y) + margin
+		var lane := 0
+		while lane < lane_spans.size() and _lane_overlaps(lane_spans[lane], lo, hi):
+			lane += 1
+		if lane == lane_spans.size():
+			lane_spans.append([])
+		lane_spans[lane].append([lo, hi])
+		connector["lane"] = lane
+	# Pack lanes to the right of the widest row; fall back inward if the panel
+	# is too narrow to fit them all outside the blocks.
+	var lane_gap := _connector_lane_gap()
+	var right_limit := size.x - VisualTheme.scaled(14.0, 5.0, 56.0)
+	var base_x := minf(
+		max_right + VisualTheme.scaled(24.0, 10.0, 96.0),
+		right_limit - maxf(0.0, float(lane_spans.size() - 1)) * lane_gap
+	)
+	for connector in connectors:
+		var lane_x: float = base_x + connector["lane"] * lane_gap
+		connector["points"] = PackedVector2Array([
+			connector["start"],
+			Vector2(lane_x, connector["start"].y),
+			Vector2(lane_x, connector["end"].y),
+			connector["end"],
 		])
-		_jump_underlay.draw_polyline(points, color, 4.0, true)
-		_draw_underlay_arrowhead(end, (end - points[-2]).normalized(), color)
+	return connectors
+
+func _lane_overlaps(spans: Array, lo: float, hi: float) -> bool:
+	for span: Array in spans:
+		if lo <= span[1] and hi >= span[0]:
+			return true
+	return false
+
+## Stroke one connector: a pale halo underneath for contrast, then the line.
+func _draw_connector(connector: Dictionary, highlighted: bool) -> void:
+	var points: PackedVector2Array = connector["points"]
+	var width := VisualTheme.scaled(CONNECTOR_HOVER_WIDTH if highlighted else CONNECTOR_WIDTH, 2.0, 24.0)
+	var color := Color.html(CONNECTOR_HOVER_COLOR if highlighted else CONNECTOR_COLOR)
+	var halo_width := width + VisualTheme.scaled(CONNECTOR_HALO_EXTRA, 2.0, 16.0)
+	_jump_underlay.draw_polyline(points, CONNECTOR_HALO_COLOR, halo_width, true)
+	_jump_underlay.draw_polyline(points, color, width, true)
+	var dir := (points[-1] - points[-2]).normalized()
+	_draw_underlay_arrowhead(points[-1], dir, color, halo_width * 0.5)
+
+## Decide which jump's connector should be highlighted: the cursor is over the
+## jump block, over its target box, or close to the connector line itself.
+func _update_hovered_jump() -> void:
+	var next_id := -1
+	if not get_viewport().gui_is_dragging():
+		next_id = _jump_id_under_cursor()
+	if next_id != _hovered_jump_id:
+		_hovered_jump_id = next_id
+		_update_jump_underlay()
+
+func _jump_id_under_cursor() -> int:
+	var hovered: Node = get_viewport().gui_get_hovered_control()
+	while hovered != null and not (hovered is InstructionBlock or hovered is JumpTargetBox):
+		hovered = hovered.get_parent()
+	if hovered is JumpTargetBox:
+		return (hovered as JumpTargetBox).owner_block.instruction.id
+	if hovered is InstructionBlock and _blocks.has(hovered):
+		var inst := (hovered as InstructionBlock).instruction
+		if inst.is_jump():
+			return inst.id
+	if not _is_mouse_over_list():
+		return -1
+	var mouse := get_local_mouse_position()
+	var threshold := VisualTheme.scaled(CONNECTOR_HOVER_DISTANCE, 4.0, 32.0)
+	var best_id := -1
+	var best_distance := threshold
+	for connector in _build_connectors():
+		var points: PackedVector2Array = connector["points"]
+		for i in points.size() - 1:
+			var d := mouse.distance_to(Geometry2D.get_closest_point_to_segment(mouse, points[i], points[i + 1]))
+			if d < best_distance:
+				best_distance = d
+				best_id = connector["id"]
+	return best_id
 
 ## Small triangle pointing in `dir` at the arrow's landing point.
 func _draw_arrowhead(tip: Vector2, dir: Vector2, color: Color) -> void:
@@ -646,13 +885,20 @@ func _draw_arrowhead(tip: Vector2, dir: Vector2, color: Color) -> void:
 	var c := tip - dir * 10 - perp * 6
 	draw_colored_polygon(PackedVector2Array([a, b, c]), color)
 
-func _draw_underlay_arrowhead(tip: Vector2, dir: Vector2, color: Color) -> void:
+func _draw_underlay_arrowhead(tip: Vector2, dir: Vector2, color: Color, halo: float = 0.0) -> void:
 	if dir == Vector2.ZERO:
 		return
 	var perp := Vector2(-dir.y, dir.x)
+	var length := VisualTheme.scaled(12.0, 6.0, 48.0)
+	var half := VisualTheme.scaled(7.0, 3.0, 28.0)
+	if halo > 0.0:
+		var ha := tip + dir * halo
+		var hb := tip - dir * (length + halo) + perp * (half + halo)
+		var hc := tip - dir * (length + halo) - perp * (half + halo)
+		_jump_underlay.draw_colored_polygon(PackedVector2Array([ha, hb, hc]), CONNECTOR_HALO_COLOR)
 	var a := tip
-	var b := tip - dir * 10 + perp * 6
-	var c := tip - dir * 10 - perp * 6
+	var b := tip - dir * length + perp * half
+	var c := tip - dir * length - perp * half
 	_jump_underlay.draw_colored_polygon(PackedVector2Array([a, b, c]), color)
 
 ## A block's rectangle expressed in this control's local coordinates.
@@ -665,3 +911,64 @@ func _local_control_rect(control: Control) -> Rect2:
 	var r := control.get_global_rect()
 	r.position -= global_position
 	return r
+
+## One closed C-shaped contour: header, spine and bottom lip share a fill
+## and a single outline, with no overlapping panel borders at their joins.
+## Its bounds are measured from the laid-out rows, including the drop preview.
+func _if_outline(index: int) -> PackedVector2Array:
+	var closing := program.matching_end_if(index)
+	if closing < 0 or closing >= _blocks.size():
+		return PackedVector2Array()
+	var header := _local_rect(_blocks[index])
+	var footer := _local_rect(_blocks[closing])
+	var left := header.position.x
+	var right := header.end.x
+	var padding := VisualTheme.scaled(12, 6, 48)
+	for i in range(index + 1, closing):
+		right = maxf(right, _local_rect(_blocks[i]).end.x + padding)
+	var inner := left + VisualTheme.scaled(16, 8, 64)
+	return PackedVector2Array([
+		Vector2(left, header.position.y),
+		Vector2(right, header.position.y),
+		Vector2(right, header.end.y),
+		Vector2(inner, header.end.y),
+		Vector2(inner, footer.position.y),
+		Vector2(right, footer.position.y),
+		Vector2(right, footer.end.y),
+		Vector2(left, footer.end.y),
+	])
+
+func _draw_if_braces() -> void:
+	var clip_rect := _scroll.get_global_rect()
+	clip_rect.position -= global_position
+	var clip_polygon := PackedVector2Array([
+		clip_rect.position, Vector2(clip_rect.end.x, clip_rect.position.y),
+		clip_rect.end, Vector2(clip_rect.position.x, clip_rect.end.y),
+	])
+	for i in _blocks.size():
+		var block := _blocks[i]
+		if block.op != InstructionDef.Op.IF:
+			continue
+		var points := _if_outline(i)
+		if points.is_empty():
+			continue
+		var base := InstructionDef.color_for(InstructionDef.Op.IF)
+		var fill := base
+		var border := base.darkened(0.25)
+		var width := VisualTheme.scaled(3, 1, 18)
+		if block._candidate:
+			fill = base.lightened(0.2)
+			border = Color.html("#3FA0FF")
+			width = VisualTheme.scaled(4, 1, 24)
+		elif block._active:
+			fill = base.lightened(0.25)
+			border = Color.html("#FFE680")
+			width = VisualTheme.scaled(4, 1, 24)
+		var alpha := (block.get_parent() as Control).modulate.a
+		fill.a *= alpha
+		border.a *= alpha
+		for visible_shape in Geometry2D.intersect_polygons(points, clip_polygon):
+			_jump_underlay.draw_colored_polygon(visible_shape, fill)
+			var outline := visible_shape.duplicate()
+			outline.append(outline[0])
+			_jump_underlay.draw_polyline(outline, border, width, true)

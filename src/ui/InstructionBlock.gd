@@ -62,10 +62,21 @@ static var _click_pickup_started_ms: int = 0
 var _memory_size: int = 0
 var _operand_button: Button = null
 var _target_button: JumpTargetHandle = null
+var _param_chip: Control = null  ## ChoiceChip or StepperChip, when the op has a param.
 var _label: Label = null
+var _runtime_value_label: Label = null
+var _wait_calculation_label: Label = null
+var _wait_scale_slot: int = -1
+var _wait_scale_value: int = 1
+var _wait_scale_is_key: bool = false
 ## Visual flags combined by _apply_style: execution highlight and drop-candidate.
 var _active: bool = false
 var _candidate: bool = false
+## Fraction (0..1) of the block's background filled by the wait progress bar;
+## 0 draws nothing. Set by the program list while a snake wait counts down.
+var _progress: float = 0.0
+## Tint of the progress fill, drawn over the panel and under the text.
+const PROGRESS_FILL := Color(1.0, 1.0, 1.0, 0.3)
 ## Left-press bookkeeping so a pickup starts on a clean click (press then
 ## release without travelling), not on the raw press. Starting on release keeps
 ## Godot's native drag-detection — armed on press because _get_drag_data is
@@ -88,6 +99,11 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	_apply_style()
+	if op == InstructionDef.Op.END_IF:
+		custom_minimum_size = VisualTheme.scaled_size(Vector2(70, 18), Vector2(35, 12), Vector2(350, 90))
+		size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		tooltip_text = InstructionDef.tooltip_for(op)
+		return
 	custom_minimum_size = VisualTheme.scaled_size(Vector2(150, 0), Vector2(80, 0), Vector2(900, 0))
 	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	# Native hover tooltip explaining the command. The Viewport walks up from the
@@ -124,7 +140,19 @@ func _on_mouse_exited() -> void:
 ## glyph. Returns the word label, kept as _label for the block.
 func _add_command_label(row: HBoxContainer, word_font_size: int, color: Color) -> Label:
 	var glyph_size := int(roundf(float(word_font_size) * GLYPH_FONT_SCALE))
-	var glyph := _make_command_part(InstructionDef.glyph_for(op), glyph_size, color)
+	var icon_name := InstructionDef.icon_for(op)
+	var glyph: Control
+	if op == InstructionDef.Op.MOVE or op == InstructionDef.Op.KEY_PRESS:
+		var symbol_kind := SnakeMemoryIcon.Kind.DIRECTION if op == InstructionDef.Op.MOVE else SnakeMemoryIcon.Kind.KEY
+		var symbol := SnakeMemoryIcon.new(symbol_kind)
+		symbol.ink = color
+		var edge := float(VisualTheme.scaled_int(float(glyph_size) * font_scale, 6, 320))
+		symbol.custom_minimum_size = Vector2(edge, edge)
+		glyph = symbol
+	elif icon_name.is_empty():
+		glyph = _make_command_part(InstructionDef.glyph_for(op), glyph_size, color)
+	else:
+		glyph = _make_command_icon(icon_name, glyph_size, color)
 	var word := _make_command_part(InstructionDef.word_for(op), word_font_size, color)
 	if InstructionDef.glyph_leads(op):
 		row.add_child(glyph)
@@ -147,13 +175,39 @@ func _make_command_part(text: String, base_font_size: int, color: Color) -> Labe
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return lbl
 
-## Build the operand affordance appropriate to this opcode.
+## An SF Symbol standing in for the text glyph, sized like the glyph font so
+## icon and word line up on their middle the same way two labels do.
+func _make_command_icon(icon_name: String, base_font_size: int, color: Color) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = SFSymbols.texture(icon_name, color)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var edge := float(VisualTheme.scaled_int(float(base_font_size) * font_scale, 6, 320))
+	icon.custom_minimum_size = Vector2(edge, edge)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return icon
+
+## Build the operand affordance appropriate to this opcode. The extra param
+## chip (choice menu / stepper) sits before the jump arrow so a conditional
+## reads left to right: "jump if [🥕] → 07".
 func _build_operand(row: HBoxContainer) -> void:
+	_build_param_chip(row)
+	if op == InstructionDef.Op.TICK:
+		_wait_calculation_label = _make_command_part("", 17, Color.html("#FBF7EE"))
+		row.add_child(_wait_calculation_label)
+		_refresh_wait_calculation()
 	var kind := InstructionDef.operand_kind_for(op)
 	if kind == InstructionDef.OperandKind.ADDRESS:
-		_operand_button = _make_chip(str(instruction.address))
+		if op == InstructionDef.Op.MOVE:
+			row.add_child(_make_command_part("reads", 14, Color.html("#FBF7EE")))
+		_operand_button = _make_chip(_address_chip_text())
 		_operand_button.pressed.connect(_on_cycle_address)
 		row.add_child(_operand_button)
+		if op == InstructionDef.Op.MOVE:
+			_runtime_value_label = _make_command_part("—", 18, Color.html("#FBF7EE"))
+			_runtime_value_label.tooltip_text = "Current value in this memory slot"
+			row.add_child(_runtime_value_label)
 	elif kind == InstructionDef.OperandKind.JUMP:
 		# A draggable arrow handle: click cycles the target, drag wires it
 		# directly — except in click-to-pickup mode, where a click instead
@@ -163,6 +217,22 @@ func _build_operand(row: HBoxContainer) -> void:
 			if not click_to_pickup_enabled:
 				request_target_pick.emit(self))
 		row.add_child(_target_button)
+
+## Add the choice menu or stepper for opcodes that carry a param.
+func _build_param_chip(row: HBoxContainer) -> void:
+	match InstructionDef.param_kind_for(op):
+		InstructionDef.ParamKind.CHOICE:
+			var choice := ChoiceChip.new(instruction)
+			choice.choice_changed.connect(func() -> void: instruction_changed.emit())
+			_param_chip = choice
+		InstructionDef.ParamKind.STEPPER:
+			var stepper := StepperChip.new(instruction)
+			stepper.value_changed.connect(func() -> void:
+				_refresh_wait_calculation()
+				instruction_changed.emit())
+			_param_chip = stepper
+	if _param_chip:
+		row.add_child(_param_chip)
 
 ## A small light chip-button used for operands and jump targets.
 func _make_chip(text: String) -> Button:
@@ -183,8 +253,40 @@ func _on_cycle_address() -> void:
 	if _memory_size <= 0:
 		return
 	instruction.address = (instruction.address + 1) % _memory_size
-	_operand_button.text = str(instruction.address)
+	_operand_button.text = _address_chip_text()
 	instruction_changed.emit()
+
+func _address_chip_text() -> String:
+	return "[%d]" % instruction.address if op == InstructionDef.Op.MOVE else str(instruction.address)
+
+func set_memory_preview(value: int, is_key: bool) -> void:
+	if _runtime_value_label == null:
+		return
+	_runtime_value_label.text = SnakeKey.display(value) if is_key else ("—" if value == StepAction.NULL_VALUE else str(value))
+	_runtime_value_label.tooltip_text = "MOVE reads slot %d: %s" % [instruction.address, _runtime_value_label.text]
+
+## Cache the speed even before this block enters the tree (list rebuilds).
+func set_wait_preview(slot: int, value: int, is_key: bool) -> void:
+	_wait_scale_slot = slot
+	_wait_scale_value = value
+	_wait_scale_is_key = is_key
+	_refresh_wait_calculation()
+
+func _refresh_wait_calculation() -> void:
+	if _wait_calculation_label == null:
+		return
+	_wait_calculation_label.visible = _wait_scale_slot >= 0
+	if _wait_scale_slot < 0:
+		return
+	_wait_calculation_label.tooltip_text = "WAIT time ÷ SPEED in slot %d" % _wait_scale_slot
+	if _wait_scale_is_key or _wait_scale_value == StepAction.NULL_VALUE or _wait_scale_value < 1:
+		_wait_calculation_label.text = "÷ ? = invalid speed"
+		return
+	var seconds := maxf(0.0, instruction.param / 10.0) / float(_wait_scale_value)
+	var duration := String.num(seconds, 3)
+	if seconds > 0.0 and seconds < 0.001:
+		duration = "<0.001"
+	_wait_calculation_label.text = "÷ %d = %ss" % [_wait_scale_value, duration]
 
 ## Tell address chips how many tiles exist so cycling stays in range.
 func set_memory_size(count: int) -> void:
@@ -206,6 +308,26 @@ func set_active(active: bool) -> void:
 	_active = active
 	_apply_style()
 
+## Show how far through its wait this block is, as a fill behind the text.
+func set_progress(fraction: float) -> void:
+	var next := clampf(fraction, 0.0, 1.0)
+	if is_equal_approx(next, _progress):
+		return
+	_progress = next
+	queue_redraw()
+
+## The progress fill. Script _draw runs after the panel stylebox and before
+## the children, so the bar sits between the frame and the label.
+func _draw() -> void:
+	if _progress <= 0.0:
+		return
+	var inset := float(VisualTheme.scaled_int(3, 1, 18))
+	var inner := Rect2(Vector2.ZERO, size).grow(-inset)
+	var style := StyleBoxFlat.new()
+	style.bg_color = PROGRESS_FILL
+	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
+	draw_style_box(style, Rect2(inner.position, Vector2(inner.size.x * _progress, inner.size.y)))
+
 ## Highlight this line as the line a dragged jump arrow would land on.
 func set_candidate(candidate: bool) -> void:
 	_candidate = candidate
@@ -213,6 +335,13 @@ func set_candidate(candidate: bool) -> void:
 
 ## Repaint the block's frame from its current highlight flags.
 func _apply_style() -> void:
+	# Program IFs are painted as one silhouette by the list. Keep these
+	# controls for layout, operands and hit testing, without separate seams.
+	if not is_palette and op in [InstructionDef.Op.IF, InstructionDef.Op.END_IF]:
+		var empty := StyleBoxEmpty.new()
+		empty.set_content_margin_all(VisualTheme.scaled_int(3, 1, 18))
+		add_theme_stylebox_override("panel", empty)
+		return
 	var base := InstructionDef.color_for(op)
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(VisualTheme.scaled_int(2, 1, 18))
@@ -238,7 +367,7 @@ func _get_drag_data(_pos: Vector2) -> Variant:
 	# (started from _gui_input below) and let a plain click-drag-release
 	# reorder the line natively while the click-to-pickup preview is left
 	# stuck on screen. Click-to-pickup is the only path in that mode.
-	if click_to_pickup_enabled:
+	if click_to_pickup_enabled or op == InstructionDef.Op.END_IF:
 		return null
 	var data := _make_drag_payload()
 	set_drag_preview(_make_preview())
@@ -252,7 +381,7 @@ func _get_drag_data(_pos: Vector2) -> Variant:
 ## past the drag threshold. Waiting for the release means the pickup keys off a
 ## gesture the drag system has already declined to claim.
 func _gui_input(event: InputEvent) -> void:
-	if not click_to_pickup_enabled:
+	if not click_to_pickup_enabled or op == InstructionDef.Op.END_IF:
 		return
 	if event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
@@ -326,6 +455,8 @@ func _make_preview() -> Control:
 	return preview
 
 func _start_click_pickup() -> void:
+	if op == InstructionDef.Op.END_IF:
+		return
 	InstructionBlock.start_generic_click_pickup(_make_drag_payload(), _make_preview(), self, self)
 
 ## Starts a click-to-pickup session for any draggable payload recognised by
