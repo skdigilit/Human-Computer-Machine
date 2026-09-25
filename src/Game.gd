@@ -13,7 +13,7 @@ extends Control
 # and character visuals do not shift during window resizes.
 const PANEL_GAP := 8.0
 const ROOM_WIDTH_RATIO := 0.64
-const PALETTE_WIDTH_RATIO := 0.12
+const PALETTE_WIDTH_RATIO := 0.09
 const CONTROL_HEIGHT_RATIO := 0.10
 const BRIEFING_HEIGHT_RATIO := 0.25
 const MIN_ROOM_WIDTH := 720.0
@@ -23,6 +23,8 @@ const MIN_CONTROL_HEIGHT := 112.0
 const MIN_BRIEFING_HEIGHT := 220.0
 const MIN_PROGRAM_HEIGHT := 260.0
 const MAX_PROGRAM_PAGES := 3
+## Instructions the run loop may execute back-to-back before yielding a frame.
+const MAX_SYNCHRONOUS_STEPS := 200
 const DEFAULT_SAVE_PATH := "user://instruction_pages.json"
 const WINDOWS_WINDOW_SIZE := Vector2i(1280, 1080)
 const RESIZE_EDGE_THICKNESS := 10.0
@@ -44,7 +46,7 @@ var _save_path: String = DEFAULT_SAVE_PATH
 var _settings_path: String = HCMSettingsScript.SETTINGS_PATH
 var _vm: VM = null
 
-var _room: RoomView
+var _room: StageView
 var _palette: InstructionPalette
 var _briefing: BriefingNote
 var _program_list: ProgramListView
@@ -59,6 +61,7 @@ var _resize_kind: int = RESIZE_NONE
 var _resize_cursor_active: bool = false
 
 var _running: bool = false
+var _run_loop_active: bool = false
 var _busy: bool = false
 var _halted: bool = false
 var _step_buffered: bool = false
@@ -66,7 +69,52 @@ var _manual_step_loop_active: bool = false
 var _delay: float = 0.4
 var _last_pointer_position: Vector2 = Vector2.ZERO
 
+# --- Mode hooks ---------------------------------------------------------------
+# A game mode (e.g. SnakeGame) subclasses Game and overrides only these. Every
+# other part of the orchestrator — layout, drag-drop, pages, settings — is shared.
+
+## The stage panel for this mode.
+func _create_stage() -> StageView:
+	return RoomView.new()
+
+func _create_program_list() -> ProgramListView:
+	return ProgramListView.new()
+
+## Called when an instruction's visible animation or timer has finished.
+func _after_animation(_action: StepAction) -> void:
+	pass
+
+## The ordered level list for this mode.
+func _load_levels() -> Array[Level]:
+	return LevelLibrary.all_levels()
+
+## The machine that runs the current program against the current level.
+func _create_vm() -> VM:
+	return VM.new(_level, _program)
+
+## Settings key remembering which level was open last.
+func _level_index_setting_key() -> String:
+	return HCMSettingsScript.CURRENT_LEVEL_INDEX
+
+## Where this mode's instruction pages are saved.
+func _default_save_path() -> String:
+	return DEFAULT_SAVE_PATH
+
+## Pause after `action` before the next instruction runs, in seconds.
+func _delay_after(_action: StepAction) -> float:
+	return _delay
+
+## Status line shown after a reset.
+func _idle_status() -> String:
+	return "Drag a move into the list. Press RUN to watch it!"
+
+## Let a mode react to a key press that the shared shortcuts did not consume.
+## Return true when handled.
+func _handle_mode_key(_key: InputEventKey) -> bool:
+	return false
+
 func _ready() -> void:
+	_save_path = _default_save_path() if _save_path == DEFAULT_SAVE_PATH else _save_path
 	_last_pointer_position = get_viewport().get_mouse_position()
 	if OS.has_feature("windows"):
 		var window := get_window()
@@ -82,9 +130,9 @@ func _ready() -> void:
 	# Set before any instruction blocks are built so the first palette / program
 	# render already honours the saved accessibility font size.
 	InstructionBlock.font_scale = _settings.get_number(HCMSettingsScript.INSTRUCTION_FONT_SCALE, 1.0)
-	_levels = LevelLibrary.all_levels()
+	_levels = _load_levels()
 	_level_index = clampi(
-		_settings.get_int(HCMSettingsScript.CURRENT_LEVEL_INDEX),
+		_settings.get_int(_level_index_setting_key()),
 		0,
 		maxi(0, _levels.size() - 1)
 	)
@@ -152,7 +200,9 @@ func _input(event: InputEvent) -> void:
 		var key := event as InputEventKey
 		if not key.pressed or key.echo:
 			return
-		if _is_toggle_instruction_pickup_key(key):
+		if _handle_mode_key(key):
+			accept_event()
+		elif _is_toggle_instruction_pickup_key(key):
 			if InstructionBlock.toggle_keyboard_pickup(_last_pointer_position, self):
 				accept_event()
 		elif _is_scale_up_key(key):
@@ -182,7 +232,7 @@ func _build_background() -> void:
 	add_child(bg)
 
 func _build_panels() -> void:
-	_room = RoomView.new()
+	_room = _create_stage()
 	add_child(_room)
 
 	_control_bar = ControlBar.new()
@@ -192,9 +242,9 @@ func _build_panels() -> void:
 	add_child(_palette)
 
 	_briefing = BriefingNote.new()
-	add_child(_briefing)
+	_control_bar.set_briefing(_briefing)
 
-	_program_list = ProgramListView.new()
+	_program_list = _create_program_list()
 	add_child(_program_list)
 
 	_settings_layer = CanvasLayer.new()
@@ -245,13 +295,6 @@ func _layout_panels(viewport_size: Vector2) -> void:
 	var palette_width: float = widths[1]
 	var editor_width: float = widths[2]
 
-	var editor_stack_height := maxf(1.0, top_height - gap)
-	var briefing_height := (
-		minf(editor_stack_height, _briefing.collapsed_height())
-		if _briefing.is_collapsed()
-		else editor_stack_height * _clamped_editor_question_ratio(editor_stack_height)
-	)
-	var program_height := editor_stack_height - briefing_height
 
 	_room.position = Vector2(gap, gap)
 	_room.size = Vector2(room_width, top_height)
@@ -269,11 +312,8 @@ func _layout_panels(viewport_size: Vector2) -> void:
 
 	var editor_x := actual_room_width + actual_palette_width + gap * 3.0
 	editor_width = maxf(1.0, viewport_size.x - editor_x - gap)
-	_briefing.position = Vector2(editor_x, gap)
-	_briefing.size = Vector2(editor_width, briefing_height)
-
-	_program_list.position = Vector2(editor_x, briefing_height + gap * 2.0)
-	_program_list.size = Vector2(editor_width, program_height)
+	_program_list.position = Vector2(editor_x, gap)
+	_program_list.size = Vector2(editor_width, top_height)
 
 func _adaptive_column_widths(content_width: float) -> Array[float]:
 	var ui_scale := VisualTheme.effective_ui_scale()
@@ -416,8 +456,6 @@ func _resize_edge_at(mouse_position: Vector2, modifier_pressed: bool) -> int:
 	if not modifier_pressed:
 		return RESIZE_NONE
 	var edge := _resize_edge_thickness()
-	if not _briefing.is_collapsed() and (_horizontal_edge_hit(_briefing, mouse_position, true, edge) or _horizontal_edge_hit(_program_list, mouse_position, false, edge)):
-		return RESIZE_EDITOR_SPLIT
 	if _vertical_edge_hit(_palette, mouse_position, false, edge):
 		return RESIZE_ROOM_SPLIT
 	if _vertical_edge_hit(_palette, mouse_position, true, edge):
@@ -557,12 +595,12 @@ func _reset_run() -> void:
 	_room.set_show_expected_outbox_boxes(_settings.is_enabled(HCMSettingsScript.SHOW_OUTBOX_EXPECTED_BOXES), _level)
 	_program_list.set_active_line(-1)
 	_control_bar.set_running(false)
-	_control_bar.set_status("Drag a move into the list. Press RUN to watch it!")
+	_control_bar.set_status(_idle_status())
 
 ## Create the VM lazily so edits before the first run are always honoured.
 func _ensure_vm() -> void:
 	if _vm == null:
-		_vm = VM.new(_level, _program)
+		_vm = _create_vm()
 		_halted = false
 
 # --- Control bar handlers -----------------------------------------------------
@@ -713,39 +751,63 @@ func _run_manual_steps() -> void:
 
 ## Auto-advance through the program at the chosen speed until paused or halted.
 func _run_loop() -> void:
+	if _run_loop_active:
+		return
+	_run_loop_active = true
+	var synchronous_steps := 0
 	while _running:
-		await _execute_one()
+		var action := await _execute_one()
 		if _halted or not _running:
 			break
-		await get_tree().create_timer(_delay).timeout
+		var pause := _delay_after(action) if action != null else _delay
+		if pause > 0.0:
+			synchronous_steps = 0
+			await get_tree().create_timer(pause).timeout
+		else:
+			# A zero pause runs the next instruction immediately (snake runs a
+			# whole frame of checks between ticks). Yield now and then so a
+			# mode that never pauses can't freeze the UI.
+			synchronous_steps += 1
+			if synchronous_steps >= MAX_SYNCHRONOUS_STEPS:
+				synchronous_steps = 0
+				await get_tree().process_frame
 	_running = false
+	_run_loop_active = false
 	_control_bar.set_running(false)
 	if _step_buffered and not _halted:
 		_run_manual_steps()
 
 ## Execute exactly one instruction and play back its animation. Guarded so
-## overlapping triggers (fast clicks, run loop) never interleave.
-func _execute_one() -> void:
+## overlapping triggers (fast clicks, run loop) never interleave. Returns the
+## step that ran (null when nothing ran) so the run loop can pace itself.
+func _execute_one() -> StepAction:
 	if _busy or _halted:
-		return
+		return null
 	_busy = true
 	_ensure_vm()
 
 	if _program.size() == 0:
 		_control_bar.set_status("Your program is empty — drag in some commands!")
 		_busy = false
-		return
+		return null
 
 	var action := _vm.step()
 	if not action.halted:
 		_program_list.set_active_line(action.line_index)
 	await _room.animate(action)
 
+	# A reset can land while the stage is still animating (a snake wait ends
+	# the moment the board is rebuilt); the machine is gone, so just unwind.
+	if _vm == null:
+		_busy = false
+		return null
+	_after_animation(action)
 	if action.halted:
 		_finish(action)
 	else:
 		_program_list.set_active_line(_vm.pc)
 	_busy = false
+	return action
 
 ## React to the program ending (win, wrong output, or error).
 func _finish(action: StepAction) -> void:
@@ -799,7 +861,7 @@ func _save_panel_layout_settings() -> void:
 func _save_current_level_index() -> void:
 	if _settings == null:
 		return
-	_settings.set_value(HCMSettingsScript.CURRENT_LEVEL_INDEX, _level_index)
+	_settings.set_value(_level_index_setting_key(), _level_index)
 
 func _apply_settings() -> void:
 	if _settings == null:

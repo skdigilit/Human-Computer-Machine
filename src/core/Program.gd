@@ -20,6 +20,9 @@ func insert_at(index: int, instruction: Instruction) -> void:
 func remove_at(index: int) -> Instruction:
 	if index < 0 or index >= instructions.size():
 		return null
+	var closing := matching_end_if(index)
+	if closing > index:
+		instructions.remove_at(closing)
 	return instructions.pop_at(index)
 
 ## Current line count.
@@ -46,6 +49,7 @@ func to_data() -> Array:
 			"op": int(instruction.op),
 			"address": instruction.address,
 			"jump_target": index_of_id(instruction.jump_target_id),
+			"param": instruction.param,
 		})
 	return data
 
@@ -58,6 +62,8 @@ static func from_data(data: Array) -> Program:
 			continue
 		var instruction := Instruction.new(clampi(int(value.get("op", 0)), 0, InstructionDef.Op.size() - 1))
 		instruction.address = int(value.get("address", 0))
+		# Older saves have no param; keep the opcode's default in that case.
+		instruction.param = int(value.get("param", instruction.param))
 		loaded.add(instruction)
 		jump_targets.append(int(value.get("jump_target", -1)))
 
@@ -66,3 +72,33 @@ static func from_data(data: Array) -> Program:
 		if target_index >= 0 and target_index < loaded.size():
 			loaded.instructions[i].jump_target_id = loaded.instructions[target_index].id
 	return loaded
+
+## The flat save format keeps old opcode values and jump targets intact.
+## Matching braces are structural, so nested blocks need no saved length.
+func matching_end_if(index: int) -> int:
+	if index < 0 or index >= size() or instructions[index].op != InstructionDef.Op.IF:
+		return -1
+	var depth := 0
+	for i in range(index, size()):
+		if instructions[i].op == InstructionDef.Op.IF:
+			depth += 1
+		elif instructions[i].op == InstructionDef.Op.END_IF:
+			depth -= 1
+			if depth == 0:
+				return i
+	return -1
+
+## Move a complete IF group together; ordinary instructions move individually.
+func move_group(from: int, destination: int) -> void:
+	var end := matching_end_if(from)
+	if end < 0:
+		end = from
+	if destination >= from and destination <= end + 1:
+		return
+	var group := instructions.slice(from, end + 1)
+	for i in group.size():
+		instructions.remove_at(from)
+	if destination > end:
+		destination -= group.size()
+	for i in group.size():
+		instructions.insert(clampi(destination + i, 0, size()), group[i])

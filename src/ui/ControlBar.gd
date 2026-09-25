@@ -9,11 +9,15 @@ signal reset_requested()
 signal step_requested()
 signal play_toggled(should_run: bool)
 signal speed_changed(seconds_per_step: float)
+## The raw slider position (0 = slowest, 1 = fastest), for modes that map speed
+## to something other than a per-step delay.
+signal speed_fraction_changed(fraction: float)
 signal settings_requested()
 
 ## Speed slider maps linearly onto this delay range (fast .. slow).
 const FAST_DELAY := 0.06
 const SLOW_DELAY := 0.9
+const INITIAL_SPEED_FRACTION := 0.6
 const SFSymbolsScript := preload("res://src/ui/SFSymbols.gd")
 const STATUS_TONE_DEFAULT := 0
 const STATUS_TONE_SUCCESS := 1
@@ -24,6 +28,8 @@ const STATUS_SUCCESS_OUTLINE := "#5A4A10"
 const STATUS_ERROR_COLOR := "#D94A3A"
 
 var _play_button: Button
+var _puzzle_column: VBoxContainer
+var _briefing: BriefingNote
 var _status: Label
 var _status_tone: int = STATUS_TONE_DEFAULT
 var _running: bool = false
@@ -79,10 +85,15 @@ func _ready() -> void:
 	_slider.min_value = 0.0
 	_slider.max_value = 1.0
 	_slider.step = 0.01
-	_slider.value = 0.6
+	_slider.value = INITIAL_SPEED_FRACTION
 	_slider.custom_minimum_size = VisualTheme.scaled_size(Vector2(170, 44), Vector2(80, 20), Vector2(230, 96))
 	_slider.value_changed.connect(_on_speed_changed)
 	_speed_group.add_child(_slider)
+
+	_puzzle_column = VBoxContainer.new()
+	_puzzle_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_puzzle_column.add_theme_constant_override("separation", VisualTheme.scaled_int(8, 3, 40))
+	_row.add_child(_puzzle_column)
 
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -91,12 +102,27 @@ func _ready() -> void:
 	_status.custom_minimum_size = Vector2(1, VisualTheme.scaled(44.0, 28.0, 96.0))
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_apply_status_style(STATUS_TONE_DEFAULT)
-	_row.add_child(_status)
+	_status.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_puzzle_column.add_child(_status)
 
 	_settings_button = _make_icon_button("gearshape")
 	_settings_button.tooltip_text = "Settings"
 	_settings_button.pressed.connect(func() -> void: settings_requested.emit())
 	_row.add_child(_settings_button)
+
+## Keep the status above the puzzle navigation, between transport and settings.
+func set_briefing(briefing: BriefingNote) -> void:
+	_briefing = briefing
+	_puzzle_column.add_child(briefing)
+	briefing.collapsed_changed.connect(func(_collapsed: bool) -> void: _size_briefing())
+	_size_briefing()
+
+func _size_briefing() -> void:
+	if _briefing == null:
+		return
+	_briefing.custom_minimum_size.y = _briefing.collapsed_height() if _briefing.is_collapsed() else _briefing.expanded_height()
+	_briefing.size_flags_vertical = Control.SIZE_FILL if _briefing.is_collapsed() else Control.SIZE_EXPAND_FILL
 
 ## Build a coloured pill button.
 func _make_button(text: String, color_hex: String) -> Button:
@@ -114,6 +140,7 @@ func _make_button(text: String, color_hex: String) -> Button:
 
 func apply_ui_scale() -> void:
 	_apply_panel_style()
+	_size_briefing()
 	if _margin:
 		for side in ["left", "right", "top", "bottom"]:
 			_margin.add_theme_constant_override("margin_" + side, VisualTheme.scaled_int(12, 4, 24))
@@ -181,10 +208,19 @@ func _on_play_pressed() -> void:
 func _on_speed_changed(value: float) -> void:
 	# Slider right = faster, so invert before mapping to a delay.
 	speed_changed.emit(lerpf(SLOW_DELAY, FAST_DELAY, value))
+	speed_fraction_changed.emit(value)
 
 ## Current delay implied by the slider's starting position.
 func initial_delay() -> float:
-	return lerpf(SLOW_DELAY, FAST_DELAY, 0.6)
+	return lerpf(SLOW_DELAY, FAST_DELAY, INITIAL_SPEED_FRACTION)
+
+## Slider position before the player touches it.
+func initial_speed_fraction() -> float:
+	return INITIAL_SPEED_FRACTION
+
+func set_speed_visible(show_speed: bool) -> void:
+	if _speed_group:
+		_speed_group.visible = show_speed
 
 ## Force the play button back to its idle state (e.g. when a run ends).
 func set_running(running: bool) -> void:
@@ -213,13 +249,13 @@ func _apply_status_style(tone: int) -> void:
 			_status.add_theme_constant_override("outline_size", VisualTheme.scaled_int(3, 1, 12))
 		STATUS_TONE_ERROR:
 			VisualTheme.apply_ui_font(_status, true)
-			VisualTheme.apply_font_size(_status, 24, 12, 64)
+			VisualTheme.apply_font_size(_status, 32, 16, 80)
 			_status.add_theme_color_override("font_color", Color.html(STATUS_ERROR_COLOR))
 			_status.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0))
 			_status.add_theme_constant_override("outline_size", 0)
 		_:
 			VisualTheme.apply_ui_font(_status)
-			VisualTheme.apply_font_size(_status, 18)
+			VisualTheme.apply_font_size(_status, 26, 13, 72)
 			_status.add_theme_color_override("font_color", Color.html(STATUS_DEFAULT_COLOR))
 			_status.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0))
 			_status.add_theme_constant_override("outline_size", 0)

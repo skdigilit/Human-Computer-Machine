@@ -14,11 +14,15 @@ var op: InstructionDef.Op
 var address: int = 0
 ## Id of the instruction this jump targets, or -1 when unset (JUMP ops only).
 var jump_target_id: int = -1
+## Extra parameter (choice index or stepper value); see InstructionDef.ParamKind.
+## Independent of `address` / `jump_target_id` so a jump can also carry one.
+var param: int = 0
 
 func _init(p_op: InstructionDef.Op) -> void:
 	id = _next_id
 	_next_id += 1
 	op = p_op
+	param = InstructionDef.default_param_for(op)
 
 ## True when this opcode needs a memory tile operand.
 func uses_address() -> bool:
@@ -28,9 +32,15 @@ func uses_address() -> bool:
 func is_jump() -> bool:
 	return InstructionDef.operand_kind_for(op) == InstructionDef.OperandKind.JUMP
 
+## True when this opcode carries a choice or stepper parameter.
+func has_param() -> bool:
+	return InstructionDef.param_kind_for(op) != InstructionDef.ParamKind.NONE
+
 ## Human readable form, handy for debugging and headless tests.
 func to_text() -> String:
 	var text := InstructionDef.label_for(op)
+	if has_param():
+		text += " [" + InstructionDef.param_text_for(op, param) + "]"
 	if uses_address():
 		text += " " + str(address)
 	elif is_jump():

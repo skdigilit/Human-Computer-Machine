@@ -32,7 +32,7 @@ func build(level: Level) -> void:
 	margin.add_child(column)
 
 	var title := Label.new()
-	title.text = "1. PICK A MOVE"
+	title.text = "1. PICK A COMMAND" if level is SnakeLevel else "1. PICK A MOVE"
 	title.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
 	VisualTheme.apply_font_size(title, 15, 6, 136)
 	column.add_child(title)

@@ -1,7 +1,5 @@
 class_name RoomView
-extends Control
-
-signal test_case_swap_requested()
+extends StageView
 
 ## The office floor. Lays out the INBOX chute (left), the memory tiles (centre),
 ## the OUTBOX chute (right) and the worker, then animates each VM StepAction by

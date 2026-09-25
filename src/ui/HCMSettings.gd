@@ -22,6 +22,9 @@ const PALETTE_SIDEBAR_RATIO := "palette_sidebar_ratio"
 const EDITOR_QUESTION_RATIO := "editor_question_ratio"
 ## The currently selected built-in level index.
 const CURRENT_LEVEL_INDEX := "current_level_index"
+## Snake mode: board size (cells per side) and its own remembered level.
+const SNAKE_GRID_SIZE := "snake_grid_size"
+const SNAKE_LEVEL_INDEX := "snake_level_index"
 
 ## Defaults double as each setting's type: loaded values are cast to the type
 ## of the default here, so bools and numbers can share the one store.
@@ -37,6 +40,8 @@ var values: Dictionary = {
 	PALETTE_SIDEBAR_RATIO: 0.0,
 	EDITOR_QUESTION_RATIO: 0.0,
 	CURRENT_LEVEL_INDEX: 0,
+	SNAKE_GRID_SIZE: SnakeState.DEFAULT_GRID_SIZE,
+	SNAKE_LEVEL_INDEX: 0,
 }
 
 var _raw: Dictionary = {}

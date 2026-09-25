@@ -26,9 +26,9 @@ func _run() -> void:
 	game._ensure_vm()
 	game._vm.step()
 
-	var swap_button: Button = game._room._test_case_swap_button
+	var swap_button: Button = (game._room as RoomView)._test_case_swap_button
 	var button_below_inbox := swap_button.position.y >= (
-		game._room._chute_top
+		(game._room as RoomView)._chute_top
 		+ RoomView.CELL * maxi(RoomView.MIN_CHUTE_SLOTS, original_inbox.size())
 	)
 	swap_button.pressed.emit()
@@ -43,8 +43,8 @@ func _run() -> void:
 		and game._program.size() == 1
 		and game._program.instructions[0].id == instruction.id
 		and game._vm == null
-		and game._room._inbox_boxes.size() == game._level.inbox.size()
-		and game._room._expected_outbox_values == game._level.expected_outbox
+		and (game._room as RoomView)._inbox_boxes.size() == game._level.inbox.size()
+		and (game._room as RoomView)._expected_outbox_values == game._level.expected_outbox
 	)
 
 	print("RESULT: ", "PASS" if passed else "FAIL")

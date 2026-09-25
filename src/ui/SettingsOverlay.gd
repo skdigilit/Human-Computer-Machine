@@ -37,6 +37,8 @@ const CURSOR_SIZE_STEP := 0.25
 const INSTRUCTION_FONT_MIN := 1.0
 const INSTRUCTION_FONT_MAX := 2.0
 const INSTRUCTION_FONT_STEP := 0.1
+## Snake board presets (cells per side).
+const SNAKE_GRID_PRESETS := [15, 25, 35, 40, 50]
 const HCMSettingsScript := preload("res://src/ui/HCMSettings.gd")
 
 var _settings: Dictionary = {}
@@ -48,6 +50,8 @@ var _content: VBoxContainer
 var _toggles: Dictionary = {}
 ## key -> HSlider, so _sync_toggles can refresh numeric rows too.
 var _sliders: Dictionary = {}
+var _grid_size_buttons: Dictionary = {}
+var _grid_size_label: Label
 
 func _init() -> void:
 	visible = false
@@ -185,6 +189,8 @@ func _refresh_content() -> void:
 	_content_scroll.set_deferred("scroll_vertical", 0)
 	_toggles.clear()
 	_sliders.clear()
+	_grid_size_buttons.clear()
+	_grid_size_label = null
 
 	match _active_tab:
 		TAB_ACCESSIBILITY:
@@ -192,7 +198,7 @@ func _refresh_content() -> void:
 		TAB_DATA:
 			_add_data_options()
 		TAB_PLAYER:
-			_add_empty_section("Player")
+			_add_player_options()
 		TAB_HELP:
 			_add_help_options()
 
@@ -205,6 +211,38 @@ func _add_accessibility_options() -> void:
 			SoftwareCursor.MIN_SIZE_SCALE, SoftwareCursor.MAX_SIZE_SCALE, CURSOR_SIZE_STEP)
 	_add_slider(HCMSettingsScript.INSTRUCTION_FONT_SCALE, "Instruction font size",
 			INSTRUCTION_FONT_MIN, INSTRUCTION_FONT_MAX, INSTRUCTION_FONT_STEP)
+
+## Player tab: Snake board size. Shown in both scenes since the settings file
+## is shared; it only affects the Snake scene.
+func _add_player_options() -> void:
+	_grid_size_label = Label.new()
+	_grid_size_label.add_theme_color_override("font_color", Color.html(VisualTheme.PAPER))
+	VisualTheme.apply_font_size(_grid_size_label, 18, 10, 48)
+	_content.add_child(_grid_size_label)
+	var presets := HFlowContainer.new()
+	presets.add_theme_constant_override("h_separation", VisualTheme.scaled_int(8, 4, 24))
+	presets.add_theme_constant_override("v_separation", VisualTheme.scaled_int(8, 4, 24))
+	_content.add_child(presets)
+	for dimension in SNAKE_GRID_PRESETS:
+		var button := _make_button(_cells_text(dimension))
+		button.toggle_mode = true
+		button.pressed.connect(_on_grid_size_selected.bind(dimension))
+		presets.add_child(button)
+		_grid_size_buttons[dimension] = button
+	_sync_grid_size()
+
+func _on_grid_size_selected(dimension: int) -> void:
+	_settings[HCMSettingsScript.SNAKE_GRID_SIZE] = dimension
+	_sync_grid_size()
+
+func _sync_grid_size() -> void:
+	var dimension := int(_settings.get(HCMSettingsScript.SNAKE_GRID_SIZE, SnakeState.DEFAULT_GRID_SIZE))
+	if is_instance_valid(_grid_size_label):
+		_grid_size_label.text = "Snake board size: " + _cells_text(dimension)
+	for preset in _grid_size_buttons:
+		var button: Button = _grid_size_buttons[preset]
+		button.set_pressed_no_signal(preset == dimension)
+		_apply_button_style(button, preset == dimension)
 
 func _add_data_options() -> void:
 	var row := PanelContainer.new()
@@ -341,7 +379,10 @@ func _add_toggle(key: String, text: String) -> void:
 
 ## Adds a labelled HSlider row (same visual row style as the toggles) whose
 ## value is shown as a percentage; applied only once the overlay closes.
-func _add_slider(key: String, text: String, min_value: float, max_value: float, step: float) -> void:
+## `value_text` formats the number shown beside the slider; defaults to a percentage.
+func _add_slider(key: String, text: String, min_value: float, max_value: float, step: float, value_text: Callable = Callable()) -> void:
+	if not value_text.is_valid():
+		value_text = _percent_text
 	var row := PanelContainer.new()
 	row.add_theme_stylebox_override("panel", _row_style())
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -378,24 +419,28 @@ func _add_slider(key: String, text: String, min_value: float, max_value: float, 
 	slider.value = float(_settings.get(key, min_value))
 	slider.custom_minimum_size = Vector2(VisualTheme.scaled(240.0, 150.0, 420.0), 0)
 	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	slider.value_changed.connect(_on_slider_changed.bind(key, value_label))
+	slider.value_changed.connect(_on_slider_changed.bind(key, value_label, value_text))
 	line.add_child(slider)
 
-	value_label.text = _percent_text(slider.value)
+	value_label.text = value_text.call(slider.value)
 	line.add_child(value_label)
 	_sliders[key] = slider
 
 func _on_toggle_changed(enabled: bool, key: String) -> void:
 	_settings[key] = enabled
 
-func _on_slider_changed(value: float, key: String, value_label: Label) -> void:
+func _on_slider_changed(value: float, key: String, value_label: Label, value_text: Callable) -> void:
 	_settings[key] = value
-	value_label.text = _percent_text(value)
+	value_label.text = value_text.call(value)
 
 static func _percent_text(value: float) -> String:
 	return "%d%%" % roundi(value * 100.0)
 
+static func _cells_text(value: float) -> String:
+	return "%d x %d" % [roundi(value), roundi(value)]
+
 func _sync_toggles() -> void:
+	_sync_grid_size()
 	for key in _toggles.keys():
 		var toggle: CheckButton = _toggles[key]
 		toggle.set_pressed_no_signal(bool(_settings.get(key, false)))
