@@ -57,6 +57,12 @@ func set_level(level: Level, index: int = 0, total: int = 1) -> void:
 	previous.pressed.connect(func() -> void: previous_requested.emit())
 	header.add_child(previous)
 
+	var number := Label.new()
+	number.text = "%d." % (index + 1)
+	number.add_theme_color_override("font_color", Color.html("#8A8368"))
+	VisualTheme.apply_font_size(number, 26, 8, 208)
+	header.add_child(number)
+
 	var title := Label.new()
 	title.text = level.title
 	title.tooltip_text = "%d / %d" % [index + 1, total]

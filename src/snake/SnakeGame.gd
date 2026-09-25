@@ -104,6 +104,8 @@ func _memory_slots_in_program() -> Array[int]:
 	var snake_level := _level as SnakeLevel
 	if snake_level and snake_level.wait_scale_slot >= 0:
 		slots.append(snake_level.wait_scale_slot)
+	if snake_level and snake_level.food_count_slot >= 0:
+		slots.append(snake_level.food_count_slot)
 	for instruction in _program.instructions:
 		if InstructionDef.operand_kind_for(instruction.op) != InstructionDef.OperandKind.ADDRESS:
 			continue

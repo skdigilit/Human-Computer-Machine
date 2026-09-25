@@ -162,7 +162,7 @@ func _exec_tick(action: SnakeStepAction, inst: Instruction) -> void:
 		if not _valid_tile(action, slot):
 			return
 		if memory_key_flags[slot] or memory[slot] == StepAction.NULL_VALUE or memory[slot] < 1:
-			_finish(action, false, "The SPEED box needs a number of 1 or more. WRITE a number into slot %d." % slot)
+			_finish(action, false, "[%d] needs a number of 1 or more. WRITE a number into [%d]." % [slot, slot])
 			return
 		speed = memory[slot]
 	action.wait_seconds = maxf(0.0, inst.param / 10.0) / float(speed)
@@ -263,5 +263,8 @@ func _exec_eat(action: SnakeStepAction) -> void:
 	action.board_changed = true
 	action.ate = true
 	var snake_level := _level as SnakeLevel
+	if snake_level and snake_level.food_count_slot >= 0 and snake_level.food_count_slot < memory.size():
+		memory[snake_level.food_count_slot] = state.score
+		memory_key_flags[snake_level.food_count_slot] = false
 	if snake_level and snake_level.target_score > 0 and state.score >= snake_level.target_score:
 		_finish(action, true, "Level complete! Score: %d" % state.score)

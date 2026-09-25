@@ -21,6 +21,9 @@ const SNAKE_COLOR := VisualTheme.PAPER
 const HEAD_COLOR := "#FFFFFF"
 const BOARD_COLOR := VisualTheme.ROOM_FLOOR
 const BOARD_FRAME := VisualTheme.STATION_FRAME
+## Memory tile tint and inner padding, echoing RoomView's floor tiles.
+const TILE_FILL_ALPHA := 0.14
+const TILE_PADDING := 8.0
 
 var _state: SnakeState = null
 var _level: SnakeLevel = null
@@ -105,6 +108,7 @@ func update_memory(values: Array[int], key_flags: Array[bool]) -> void:
 	_memory_values = values.duplicate()
 	_memory_key_flags = key_flags.duplicate()
 	_refresh_hud()
+	queue_redraw()
 
 ## Keep the key slot visible; show another slot only when a program uses it.
 func set_visible_memory_slots(slots: Array[int]) -> void:
@@ -128,34 +132,32 @@ func _build_hud() -> void:
 	_hud.add_theme_constant_override("separation", VisualTheme.scaled_int(24, 10, 60))
 	add_child(_hud)
 
-	var memory_row := _make_hud_group("MEMORY")
+	var memory_row := _make_hud_group()
 	_memory_boxes.clear()
 	for i in _memory_values.size():
-		var box := _add_hud_slot(memory_row, i, true, "Writable memory slot %d" % i)
+		var box := _add_hud_slot(memory_row, i, true, "[%d]" % i)
 		_memory_boxes.append(box)
 	_apply_memory_visibility()
 	_layout_hud()
 
+## Show every slot from 0 up to the highest one in use, so the visible tiles
+## are always a consecutive, gap-free run like the office floor.
 func _apply_memory_visibility() -> void:
+	var highest := 0
+	for slot in _visible_memory_slots:
+		highest = maxi(highest, slot)
+	if _level != null:
+		highest = maxi(highest, maxi(_level.wait_scale_slot, _level.food_count_slot))
 	for i in _memory_boxes.size():
 		var column := _memory_boxes[i].get_parent().get_parent() as Control
-		column.visible = _visible_memory_slots.has(i) or (_level != null and i == _level.wait_scale_slot)
+		column.visible = i <= highest
 
-func _make_hud_group(caption: String) -> HBoxContainer:
-	var group := VBoxContainer.new()
-	group.alignment = BoxContainer.ALIGNMENT_CENTER
-	group.add_theme_constant_override("separation", VisualTheme.scaled_int(4, 2, 14))
-	_hud.add_child(group)
-	var title := Label.new()
-	title.text = caption
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_color_override("font_color", Color.html("#B4AD99"))
-	VisualTheme.apply_ui_font(title, true)
-	VisualTheme.apply_font_size(title, 14, 8, 28)
-	group.add_child(title)
+## An unlabelled row whose tiles sit edge to edge, matching the office floor.
+func _make_hud_group() -> HBoxContainer:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", VisualTheme.scaled_int(12, 5, 28))
-	group.add_child(row)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 0)
+	_hud.add_child(row)
 	return row
 
 func _add_hud_slot(row: HBoxContainer, index: int, memory_style: bool, description: String) -> NumberBox:
@@ -169,17 +171,19 @@ func _add_hud_slot(row: HBoxContainer, index: int, memory_style: bool, descripti
 	column.add_child(header)
 	if index >= 0:
 		var address := Label.new()
-		address.text = "%d · SPEED" % index if _level != null and index == _level.wait_scale_slot else str(index)
+		address.text = "[%d]" % index
 		address.add_theme_color_override("font_color", Color.html(InstructionDef.COLOR_MEMORY))
 		VisualTheme.apply_ui_font(address, true)
-		VisualTheme.apply_font_size(address, 17, 10, 32)
+		VisualTheme.apply_font_size(address, 21, 12, 38)
 		header.add_child(address)
 	var frame := PanelContainer.new()
 	var frame_style := StyleBoxFlat.new()
-	frame_style.bg_color = Color(0, 0, 0, 0)
-	frame_style.border_color = Color.html(InstructionDef.COLOR_MEMORY if memory_style else "#8F8A79")
+	var tile_color := Color.html(InstructionDef.COLOR_MEMORY if memory_style else "#8F8A79")
+	# Tinted like the office floor tiles; no gap between neighbours so the row reads as one grid.
+	frame_style.bg_color = Color(tile_color, TILE_FILL_ALPHA)
+	frame_style.border_color = tile_color
 	frame_style.set_border_width_all(VisualTheme.scaled_int(3, 2, 10))
-	frame_style.set_expand_margin_all(VisualTheme.scaled_int(3, 2, 10))
+	frame_style.set_content_margin_all(VisualTheme.scaled(TILE_PADDING, 4.0, 20.0))
 	frame.add_theme_stylebox_override("panel", frame_style)
 	frame.tooltip_text = description
 	column.add_child(frame)
@@ -269,13 +273,23 @@ func _draw() -> void:
 		draw_rect(_cell_rect(cell).grow(inset), color)
 
 	if _state.is_inside(_state.head()) and edge >= 10.0:
-		_draw_heading_arrow(_state.head(), edge)
+		_draw_heading_arrow(_state.head(), edge, _memory_heading())
 
 	draw_rect(board, Color.html(BOARD_FRAME), false, VisualTheme.scaled(4.0, 2.0, 12.0))
 
+## The direction slot 0 holds, so the arrow shows what the program has stored
+## rather than jumping ahead to a MOVE that hasn't executed yet. Falls back to
+## the snake's actual heading when the slot holds no direction yet.
+func _memory_heading() -> InstructionDef.Direction:
+	if not _memory_values.is_empty():
+		var direction := SnakeKey.direction_for(_memory_values[0])
+		if direction >= 0:
+			return direction as InstructionDef.Direction
+	return _state.heading
+
 ## A filled arrow on the head cell, using the active theme font.
-func _draw_heading_arrow(cell: Vector2i, edge: float) -> void:
-	var step := SnakeState.DIRECTION_STEPS[_state.heading]
+func _draw_heading_arrow(cell: Vector2i, edge: float, heading: InstructionDef.Direction) -> void:
+	var step := SnakeState.DIRECTION_STEPS[heading]
 	var angle := atan2(float(step.y), float(step.x))
 	var centre := _cell_rect(cell).get_center()
 	var font := get_theme_default_font()

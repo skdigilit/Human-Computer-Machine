@@ -16,6 +16,9 @@ var target_score: int = 5
 var food_seed: int = 1
 ## Optional writable speed divisor for WAIT; -1 keeps fixed waits.
 var wait_scale_slot: int = -1
+## Optional slot the VM keeps in sync with how much food has been eaten so
+## far; -1 means the level's briefing doesn't state a food count to track.
+var food_count_slot: int = -1
 
 ## Set from Settings by SnakeGame; applies to every level whose grid_size is 0.
 static var grid_size_override: int = SnakeState.DEFAULT_GRID_SIZE

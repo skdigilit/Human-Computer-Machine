@@ -278,7 +278,7 @@ func _refresh_wait_calculation() -> void:
 	_wait_calculation_label.visible = _wait_scale_slot >= 0
 	if _wait_scale_slot < 0:
 		return
-	_wait_calculation_label.tooltip_text = "WAIT time ÷ SPEED in slot %d" % _wait_scale_slot
+	_wait_calculation_label.tooltip_text = "WAIT time ÷ [%d]" % _wait_scale_slot
 	if _wait_scale_is_key or _wait_scale_value == StepAction.NULL_VALUE or _wait_scale_value < 1:
 		_wait_calculation_label.text = "÷ ? = invalid speed"
 		return

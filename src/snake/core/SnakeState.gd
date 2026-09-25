@@ -8,7 +8,7 @@ extends RefCounted
 
 const MIN_GRID_SIZE := 5
 const MAX_GRID_SIZE := 100
-const DEFAULT_GRID_SIZE := 35
+const DEFAULT_GRID_SIZE := 15
 
 ## Cell offset for each InstructionDef.Direction, indexed by the enum value.
 const DIRECTION_STEPS: Array[Vector2i] = [
