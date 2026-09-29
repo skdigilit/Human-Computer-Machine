@@ -116,6 +116,8 @@ func step() -> StepAction:
 			_exec_move(action, inst)
 		InstructionDef.Op.EAT:
 			_exec_eat(action)
+		InstructionDef.Op.GROW:
+			state.grow()
 		InstructionDef.Op.GAME_OVER:
 			_finish(action, false, "Game over! Score: %d" % state.score)
 		_:

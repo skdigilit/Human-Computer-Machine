@@ -24,7 +24,7 @@ var body: Array[Vector2i] = []
 var heading: InstructionDef.Direction = InstructionDef.Direction.RIGHT
 var food: Vector2i = Vector2i(-1, -1)
 var score: int = 0
-## Extra cells the tail keeps on upcoming moves (one per food eaten).
+## Extra cells the tail keeps on upcoming moves, queued by GROW.
 var grow_pending: int = 0
 ## Directions whose arrow key was pressed since the last tick.
 var pressed_keys: Dictionary = {}
@@ -87,9 +87,11 @@ func eat() -> bool:
 	if not head_on_food():
 		return false
 	score += 1
-	grow_pending += 1
 	spawn_food()
 	return true
+
+func grow() -> void:
+	grow_pending += 1
 
 ## Put food on a random free cell (never under the body). Off the board when
 ## the snake has filled everything.

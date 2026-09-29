@@ -45,7 +45,7 @@ static func steer() -> SnakeLevel:
 		"Turn the snake with the ARROW KEYS. Eat 1 food to finish.\n\n"
 		+ "KEY PRESS [0] starts recording every key into [0], even during WAIT.\n"
 		+ "Try KEY PRESS [0] -> WAIT -> MOVE [0] -> JUMP back to WAIT. MOVE shows the key it reads.\n"
-		+ "A letter is stored too, but only an arrow key steers the snake. Put EAT inside IF [food] to eat only when the head reaches food.\n"
+		+ "A letter is stored too, but only an arrow key steers the snake. Put EAT and GROW inside IF [food] to eat and lengthen the tail.\n"
 		+ "[1] keeps count of each one you eat."
 	)
 	level.target_score = 1
@@ -57,6 +57,7 @@ static func steer() -> SnakeLevel:
 		InstructionDef.Op.BUMP_UP,
 		InstructionDef.Op.BUMP_DOWN,
 		InstructionDef.Op.EAT,
+		InstructionDef.Op.GROW,
 	] as Array[InstructionDef.Op])
 	_with_memory(level)
 	level.memory_size = 3
@@ -67,10 +68,10 @@ static func snack_time() -> SnakeLevel:
 	var level := SnakeLevel.new()
 	level.title = "Snack Time"
 	level.briefing = (
-		"Eat 5 food. Each one makes the snake longer.\n\n"
+		"Eat 5 food and grow the snake's tail after each one.\n\n"
 		+ "Only EAT when the head is on food, or the machine stops.\n"
 		+ "Shape: KEY PRESS [0], WAIT, MOVE [0], check for food, then loop back to WAIT.\n"
-		+ "Put EAT inside an IF [food] brace. Commands inside run only when the condition is true.\n"
+		+ "Put EAT, then GROW inside an IF [food] brace. Commands inside run only when the condition is true.\n"
 		+ "[1] keeps count of each one you eat."
 	)
 	level.target_score = 5
@@ -82,6 +83,7 @@ static func snack_time() -> SnakeLevel:
 		InstructionDef.Op.BUMP_UP,
 		InstructionDef.Op.BUMP_DOWN,
 		InstructionDef.Op.EAT,
+		InstructionDef.Op.GROW,
 	] as Array[InstructionDef.Op])
 	_with_memory(level)
 	level.memory_size = 3
@@ -94,7 +96,7 @@ static func walls_and_tail() -> SnakeLevel:
 	level.briefing = (
 		"Now the game must END properly. Hitting the wall or your own tail is GAME OVER. Eat 8 food.\n\n"
 		+ "Right after MOVE, add IF [wall] and IF [tail], each with GAME OVER inside its brace.\n"
-		+ "Check for food after those. [1] keeps count of each one you eat."
+		+ "Check for food after those. Use EAT, then GROW inside IF [food]. [1] keeps count of each one you eat."
 	)
 	level.target_score = 8
 	level.food_seed = 51
@@ -105,6 +107,7 @@ static func walls_and_tail() -> SnakeLevel:
 		InstructionDef.Op.BUMP_UP,
 		InstructionDef.Op.BUMP_DOWN,
 		InstructionDef.Op.EAT,
+		InstructionDef.Op.GROW,
 		InstructionDef.Op.GAME_OVER,
 	] as Array[InstructionDef.Op])
 	_with_memory(level)
@@ -118,7 +121,7 @@ static func full_snake() -> SnakeLevel:
 	level.briefing = (
 		"Eat 15 food without crashing. Program the snake to get faster with every food it eats.\n\n"
 		+ "[1] starts at 1. Each WAIT lasts its chosen time divided by [1]: 2 means twice as fast, 3 means three times as fast.\n"
-		+ "Use BUMP+ [1] after EAT inside IF [food]. Keep the speed at 1 or more.\n"
+		+ "Use EAT, GROW, then BUMP+ [1] inside IF [food]. Keep the speed at 1 or more.\n"
 		+ "[2] keeps count of each one you eat.\n"
 		+ "(Programmers call one wait-and-move a \"tick\" of the game.)"
 	)
@@ -131,6 +134,7 @@ static func full_snake() -> SnakeLevel:
 		InstructionDef.Op.BUMP_UP,
 		InstructionDef.Op.BUMP_DOWN,
 		InstructionDef.Op.EAT,
+		InstructionDef.Op.GROW,
 		InstructionDef.Op.GAME_OVER,
 	] as Array[InstructionDef.Op])
 	_with_memory(level)

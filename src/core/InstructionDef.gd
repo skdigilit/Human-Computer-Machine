@@ -24,13 +24,14 @@ enum Op {
 	JUMP_IF,      ## Jump when a chosen game condition holds (key pressed / head on tile).
 	FACE,         ## Point the snake in a chosen direction.
 	MOVE,         ## Read a direction key from Snake memory and move one cell.
-	EAT,          ## Eat the food under the head: score, grow, spawn new food.
+	EAT,          ## Eat the food under the head: score and spawn new food.
 	GAME_OVER,    ## End the game and show the score.
 	WRITE,        ## Snake: put a chosen number into a memory slot.
 	FACE_FROM,    ## Snake: face the direction stored in a memory slot.
 	KEY_PRESS,    ## Snake: copy the latest pressed key into a memory slot.
 	IF,           ## Snake: execute the enclosed commands when the condition holds.
 	END_IF,       ## Structural closing brace; created with IF.
+	GROW,         ## Snake: keep one extra tail cell on the next move.
 }
 
 ## How an instruction consumes its operand, used by the UI to decide what kind
@@ -111,6 +112,7 @@ static func icon_for(op: Op) -> String:
 		Op.FACE: return "location.north.fill"
 		Op.MOVE: return ""
 		Op.EAT: return "fork.knife"
+		Op.GROW: return "scribble"
 		Op.GAME_OVER: return "flag.checkered"
 	return ""
 
@@ -135,6 +137,7 @@ static func word_for(op: Op) -> String:
 		Op.FACE: return "face"
 		Op.MOVE: return "move"
 		Op.EAT: return "eat"
+		Op.GROW: return "grow"
 		Op.GAME_OVER: return "game over"
 		Op.WRITE: return "write"
 		Op.FACE_FROM: return "face from"
@@ -168,7 +171,7 @@ static func color_for(op: Op) -> Color:
 			return Color.html(COLOR_JUMP)
 		Op.TICK:
 			return Color.html(COLOR_TICK)
-		Op.FACE, Op.MOVE, Op.EAT:
+		Op.FACE, Op.MOVE, Op.EAT, Op.GROW:
 			return Color.html(COLOR_SNAKE)
 		Op.GAME_OVER:
 			return Color.html(COLOR_END)
@@ -213,7 +216,9 @@ static func tooltip_for(op: Op) -> String:
 		Op.MOVE:
 			return "move [slot] [key]\nRead the key shown in this memory slot. An arrow key turns and moves the snake; another character stays visible but does not move it."
 		Op.EAT:
-			return "eat\nEat the food under the head: +1 score, grow longer, new food appears."
+			return "eat\nEat the food under the head: +1 score and new food appears. Use GROW to lengthen the tail."
+		Op.GROW:
+			return "grow\nKeep one extra tail cell on the next MOVE. Each GROW adds one cell."
 		Op.GAME_OVER:
 			return "game over\nStop the game and show the final score."
 		Op.WRITE:
