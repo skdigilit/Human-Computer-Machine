@@ -1,6 +1,8 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+/export/
+/export_macos/
 
 # Local and personal files
 .DS_Store
